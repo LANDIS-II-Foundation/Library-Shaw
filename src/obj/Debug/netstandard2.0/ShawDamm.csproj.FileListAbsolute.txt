@@ -1,0 +1,9 @@
+C:\Users\mslucash\Documents\John\SHAW\CSharpCode\ShawDamm\ShawDamm\bin\Debug\netstandard2.0\Landis.Extension.ShawDamm.deps.json
+C:\Users\mslucash\Documents\John\SHAW\CSharpCode\ShawDamm\ShawDamm\bin\Debug\netstandard2.0\Landis.Extension.ShawDamm.dll
+C:\Users\mslucash\Documents\John\SHAW\CSharpCode\ShawDamm\ShawDamm\bin\Debug\netstandard2.0\Landis.Extension.ShawDamm.pdb
+C:\Users\mslucash\Documents\John\SHAW\CSharpCode\ShawDamm\ShawDamm\obj\Debug\netstandard2.0\ShawDamm.csprojAssemblyReference.cache
+C:\Users\mslucash\Documents\John\SHAW\CSharpCode\ShawDamm\ShawDamm\obj\Debug\netstandard2.0\ShawDamm.csproj.CoreCompileInputs.cache
+C:\Users\mslucash\Documents\John\SHAW\CSharpCode\ShawDamm\ShawDamm\obj\Debug\netstandard2.0\ShawDamm.AssemblyInfoInputs.cache
+C:\Users\mslucash\Documents\John\SHAW\CSharpCode\ShawDamm\ShawDamm\obj\Debug\netstandard2.0\ShawDamm.AssemblyInfo.cs
+C:\Users\mslucash\Documents\John\SHAW\CSharpCode\ShawDamm\ShawDamm\obj\Debug\netstandard2.0\Landis.Extension.ShawDamm.dll
+C:\Users\mslucash\Documents\John\SHAW\CSharpCode\ShawDamm\ShawDamm\obj\Debug\netstandard2.0\Landis.Extension.ShawDamm.pdb
