@@ -44,9 +44,13 @@ namespace Landis.Extension.ShawDamm
         public List<double> DailyDeepPercolation { get; }       // [mm]
         public List<double> DailyRunoff { get; }                // [mm]
 
+        public double MonthEvapotranspirationInCm { get; set; }  // [cm]
+        public double MonthDeepPercolationInCm { get; set; }    // [cm]
+        public double MonthRunoffInCm { get; set; }             // [cm]
+
         public double[] ShawDepths { get; set; }
 
-        public double[] AverageSoilMoistureProfile { get; private set; }    // average across the month
+        public double[] MonthSoilMoistureProfile { get; private set; }    // average across the month
 
         public void AddOneBasedProfiles(double[] tsdt, double[] vlcdt)
         {
@@ -59,9 +63,12 @@ namespace Landis.Extension.ShawDamm
             DailySoilMoistureProfiles.Add(v);
         }
 
-        public void MakeProfileAveragesOverDays()
+        public void MakeMonthSummaries()
         {
-            AverageSoilMoistureProfile = AverageProfileOverDays(DailySoilMoistureProfiles);
+            MonthSoilMoistureProfile = AverageProfileOverDays(DailySoilMoistureProfiles);
+            MonthEvapotranspirationInCm = DailyEvapotranspiration.Sum() / 10.0;      // convert to cm
+            MonthDeepPercolationInCm = DailyDeepPercolation.Sum() / 10.0;           // convert to cm
+            MonthRunoffInCm = DailyRunoff.Sum() / 10.0;                             // convert to cm
         }
 
         private double[] AverageProfileOverDays(List<double[]> dailyProfiles)

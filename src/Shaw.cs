@@ -612,7 +612,7 @@ namespace Landis.Extension.ShawDamm
 
             Cleanup();
 
-            results.MakeProfileAveragesOverDays();
+            results.MakeMonthSummaries();
             results.Success = true;
             return results;
         }
