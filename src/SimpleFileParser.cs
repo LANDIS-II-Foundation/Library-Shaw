@@ -64,10 +64,10 @@ namespace Landis.Extension.ShawDamm
         /// <param name="lowerInclusive">if set to <c>true</c> [lower inclusive].</param>
         /// <param name="upperInclusive">if set to <c>true</c> [upper inclusive].</param>
         /// <returns></returns>
-        public bool TryParse<T>(string token, out T value, out string errorMessage, double lowerRange = double.NegativeInfinity, bool lowerInclusive = false, double upperRange = double.PositiveInfinity, bool upperInclusive = false)
+        public bool TryParse<T>(string token, out T value, out string errorMessage, double lowerRange = double.NegativeInfinity, double upperRange = double.PositiveInfinity, bool lowerInclusive = true, bool upperInclusive = true)
         {
             bool isMissing;
-            if (!TryParseOptional(token, out value, out errorMessage, out isMissing))
+            if (!TryParseOptional(token, out value, out errorMessage, out isMissing, lowerRange, upperRange, lowerInclusive, upperInclusive))
                 return false;
 
             if (isMissing)
@@ -93,7 +93,7 @@ namespace Landis.Extension.ShawDamm
         /// <param name="lowerInclusive">if set to <c>true</c> [lower inclusive].</param>
         /// <param name="upperInclusive">if set to <c>true</c> [upper inclusive].</param>
         /// <returns></returns>
-        public bool TryParseOptional<T>(string token, out T value, out string errorMessage, out bool isMissing, double lowerRange = double.NegativeInfinity, bool lowerInclusive = false, double upperRange = double.PositiveInfinity, bool upperInclusive = false)
+        public bool TryParseOptional<T>(string token, out T value, out string errorMessage, out bool isMissing, double lowerRange = double.NegativeInfinity, double upperRange = double.PositiveInfinity, bool lowerInclusive = true, bool upperInclusive = true)
         {
             value = default(T);
             isMissing = false;
@@ -111,22 +111,40 @@ namespace Landis.Extension.ShawDamm
                 return true;
             }
 
+            if (TryParseInput(token, match[1], out value, out errorMessage, lowerRange, upperRange, lowerInclusive, upperInclusive))
+                return true;
+
+            errorMessage = $"Token {errorMessage}";
+            return false;
+        }
+
+        public static bool TryParseInput<T>(string name, string input, out T value, out string errorMessage, double lowerRange = double.NegativeInfinity, double upperRange = double.PositiveInfinity, bool lowerInclusive = true, bool upperInclusive = true)
+        {
+            value = default(T);
+
+            if (string.IsNullOrEmpty(input))
+            {
+                errorMessage = $"{name} : input value is empty";
+                return false;
+            }
+
+            errorMessage = string.Empty;
             if (typeof(T) == typeof(string))
             {
-                value = (T)Convert.ChangeType(match[1], typeof(T));
+                value = (T)Convert.ChangeType(input, typeof(T));
                 return true;
             }
 
             if (typeof(T) == typeof(double))
             {
                 double t;
-                if (!double.TryParse(match[1], out t))
+                if (!double.TryParse(input, out t))
                 {
-                    errorMessage = $"Cannot parse '{match[1]}' as double for token '{token}'";
+                    errorMessage = $"{name} : cannot parse '{input}' as double";
                     return false;
                 }
 
-                if (!CheckRange(token, t, lowerRange, upperRange, lowerInclusive, upperInclusive, out errorMessage))
+                if (!CheckRange(t, lowerRange, upperRange, lowerInclusive, upperInclusive, out errorMessage))
                     return false;
 
                 value = (T)Convert.ChangeType(t, typeof(T));
@@ -136,13 +154,13 @@ namespace Landis.Extension.ShawDamm
             if (typeof(T) == typeof(int))
             {
                 int t;
-                if (!int.TryParse(match[1], out t))
+                if (!int.TryParse(input, out t))
                 {
-                    errorMessage = $"Cannot parse '{match[1]}' as int for token '{token}'";
+                    errorMessage = $"{name} : cannot parse '{input}' as int";
                     return false;
                 }
 
-                if (!CheckRange(token, t, lowerRange, upperRange, lowerInclusive, upperInclusive, out errorMessage))
+                if (!CheckRange(t, lowerRange, upperRange, lowerInclusive, upperInclusive, out errorMessage))
                     return false;
 
                 value = (T)Convert.ChangeType(t, typeof(T));
@@ -152,9 +170,9 @@ namespace Landis.Extension.ShawDamm
             if (typeof(T) == typeof(bool))
             {
                 bool t;
-                if (!bool.TryParse(match[1], out t))
+                if (!bool.TryParse(input, out t))
                 {
-                    errorMessage = $"Cannot parse '{match[1]}' as bool for token '{token}'";
+                    errorMessage = $"{name} : cannot parse '{input}' as bool";
                     return false;
                 }
 
@@ -162,12 +180,12 @@ namespace Landis.Extension.ShawDamm
                 return true;
             }
 
-            errorMessage = $"Unrecognized Type '{typeof(T)}' requested for token '{token}'";
+            errorMessage = $"{name} : unrecognized Type '{typeof(T)}' requested";
 
             return false;
         }
 
-        private bool CheckRange(string token, double t, double lowerRange, double upperRange, bool lowerInclusive, bool upperInclusive, out string errorMessage)
+        public static bool CheckRange(double t, double lowerRange, double upperRange, bool lowerInclusive, bool upperInclusive, out string errorMessage)
         {
             errorMessage = string.Empty;
 
@@ -178,7 +196,7 @@ namespace Landis.Extension.ShawDamm
 
             if (!inRange)
             {
-                errorMessage = $"Value '{t}' for token '{token}' is out of the range: {(lowerInclusive ? "[" : "(")}{lowerRange}, {upperRange}{(upperInclusive ? "]" : ")")}";
+                errorMessage = $"Value '{t}' is out of the range: {(lowerInclusive && !double.IsNegativeInfinity(lowerRange) ? "[" : "(")}{lowerRange}, {upperRange}{(upperInclusive && !double.IsPositiveInfinity(upperRange) ? "]" : ")")}";
                 return false;
             }
 

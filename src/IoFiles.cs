@@ -11,7 +11,7 @@ namespace Landis.Extension.ShawDamm
         private static Regex _whiteSpaceRegex = new Regex(@"\s+");
         private static Regex _repeatInputRegex = new Regex(@"^(?'count'\d+)\*(?'value'.*)$");
 
-        public enum InputFile
+        private enum InputFile
         {
             SiteDescriptionData = 11,
             WeatherData = 12,
@@ -20,8 +20,8 @@ namespace Landis.Extension.ShawDamm
             WaterExtraction = 15,
         }
 
-        // the enum values are the indicies of the corresponding _lvlout[] array.
-        public enum OutputFile
+        // the enum values are the indices of the corresponding _lvlout[] array.
+        private enum OutputFile
         {
             EntireProfile = 1,
             ComparisonSimulatedMeasured = 2,
@@ -31,18 +31,41 @@ namespace Landis.Extension.ShawDamm
             SoilMatricPotential = 6,
             PlantCanopyTemperature = 7,
             PlantCanopyHumidity = 8,
-            SnowTemperature = 9, 
+            SnowTemperature = 9,
             SurfaceEnergyBalance = 10,
             WaterBalance = 11,
             WaterFlowNodes = 12,
             WaterExtractedPlants = 13,
-            LateralFlow = 14, 
+            LateralFlow = 14,
             SnowFrostDepth = 15,
             TotalSaltConc = 16,
             SoilSolutionConc = 17,
             //ExtraOutput1 = 38,
             //ExtraOutput2 = 39,
         }
+
+        // hardcoded file names with indices that match those of _lvlout[]
+        private static string[] _outputFileNames =
+        {
+            "",
+            "profile.out",
+            "comparison.out",
+            "soiltemp.out",
+            "soilwater.out",
+            "soilliquid.out",
+            "soilmatric.out",
+            "planttemp.out",
+            "planthumidity.out",
+            "snowtemp.out",
+            "energy.out",
+            "water.out",
+            "flow.out",
+            "extract.out",
+            "lateral.out",
+            "snow.out",
+            "salt.out",
+            "solutes.out",
+        };
 
         // line 1449
         //private bool IoFiles(string inputFileName, out string wd, out int iversion, out int mtstep, out int iflagsi, out int inph2O, out int mwatrxt, out int[] lvlout)
@@ -69,7 +92,6 @@ namespace Landis.Extension.ShawDamm
         //    }
 
         //    wd = Path.GetDirectoryName(inputFileName);
-
 
         //    // READ FIRST LINE WITH ALPHAMERIC TO SEE IF IT IS AN OLDER VERSION
         //    var ioutput = 2;
@@ -347,12 +369,119 @@ namespace Landis.Extension.ShawDamm
         //    return true;
         //}
 
+        public static bool GlobalInitialization(string inputFilePath, out string errorMessage)
+        {
+            errorMessage = string.Empty;
+            _wd = Path.GetDirectoryName(inputFilePath);
+
+            var inputFileParser = new SimpleFileParser(inputFilePath, out errorMessage);
+            if (!string.IsNullOrEmpty(errorMessage))
+                return false;
+
+            bool isMissing;
+            string sval;
+            int ival;
+            double dval;
+
+            // ModelSelectionFlags
+            if (!inputFileParser.TryParse("StomatalResistance", out _istomate, out errorMessage, 1, 2))
+                return false;
+
+            if (!inputFileParser.TryParse("BoundaryTemperatureCondition", out _itmpbc, out errorMessage, 0, 1))
+                return false;
+
+            if (!inputFileParser.TryParse("EquationForWaterReleaseCurve", out Slparm.Iwrc, out errorMessage, 1, 4))
+                return false;
+
+            if (!inputFileParser.TryParse("ErrorTolerance", out _toler, out errorMessage, 1e-6))
+                return false;
+
+            // PlantParameters
+            if (!inputFileParser.TryParse("CoefficientWaterPotentialDeadPlants", out _canma, out errorMessage))
+                return false;
+
+            if (!inputFileParser.TryParse("ExponentWaterPotentialDeadPlants", out _canmb, out errorMessage))
+                return false;
+
+            // SnowParameters
+            if (!inputFileParser.TryParse("SnowBasedOn", out sval, out errorMessage))
+                return false;
+
+            if (sval.Equals("AirTemp", StringComparison.OrdinalIgnoreCase))
+                _isnotmp = 1;
+            else if (sval.Equals("WetBulbTemp", StringComparison.OrdinalIgnoreCase))
+                _isnotmp = 2;
+            else
+            {
+                errorMessage = "Cannot parse 'SnowBasedOn' as either 'AirTemp' or 'WetBulbTemp'";
+                return false;
+            }
+
+            if (!inputFileParser.TryParse("MaxTempSnowfall", out _snotmp, out errorMessage, SimpleFileParser.AbsZero))
+                return false;
+
+            if (!inputFileParser.TryParse("WindProfileParameterSnow", out _zmspcm, out errorMessage, 0))
+                return false;
+
+            if (!inputFileParser.TryParse("LitterAlbedo", out _albres, out errorMessage, 0.0, 1.0))
+                return false;
+
+            if (!inputFileParser.TryParse("VaporTransferResistanceFromLitter", out _rescof, out errorMessage))
+                return false;
+
+            if (!inputFileParser.TryParse("WindCoefficientThermalConvection", out _restkb, out errorMessage))
+                return false;
+
+            if (!inputFileParser.TryParse("AlbedoDrySoil", out _albdry, out errorMessage, 0.0, 1.0))
+                return false;
+
+            if (!inputFileParser.TryParse("ExponentMoistSoil", out _albexp, out errorMessage))
+                return false;
+
+            if (!inputFileParser.TryParse("WindSurfaceRoughness", out _zmcm, out errorMessage, 0.0))
+                return false;
+
+            if (!inputFileParser.TryParse("HeightInstrumentation", out _height, out errorMessage, 0.0))
+                return false;
+
+            if (!inputFileParser.TryParse("MaximumPondingDepth", out _pondcm, out errorMessage, 0.0))
+                return false;
+
+            // read logging output flags.  If the logging name exists, set the corresponding _lvlout[] index to 24 for 24 hr output.
+            _lvlout = new int[21];
+
+            var logNames = Enum.GetNames(typeof(OutputFile));
+            var logLvlouts = Enum.GetValues(typeof(OutputFile)).Cast<int>().ToList();
+            for (var i = 0; i < logNames.Length; ++i)
+            {
+                //string fname;
+                //if (!InputFileParser.TryParseOptional(logNames[i], out fname, out errorMessage, out isMissing))
+                //    return false;
+
+                //if (!isMissing)
+                //{
+                //    _outputWriters[OutputFile.ComparisonSimulatedMeasured] = new StreamWriter(Path.Combine(_wd, fname));
+                //    _lvlout[logLvlouts[i]] = 24;
+                //}
+
+                bool containsToken;
+                if (!inputFileParser.TryContainsToken(logNames[i], out containsToken, out errorMessage))
+                    return false;
+
+                if (containsToken)
+                    _lvlout[logLvlouts[i]] = 24;
+            }
+
+            return true;
+        }
+
+        // not used: todo: delete
         public bool GlobalInitialization(string inputFileName)
         {
             HasGlobalSetup = true;
 
-            _mwatrxt = 0;
-            _lvlout = new int[21];
+            //_mwatrxt = 0;
+            //_lvlout = new int[21];
             _outputWriters = new Dictionary<ShawDamm.OutputFile, StreamWriter>(); // dictionary of stream writers for various kinds of output
             _inputReaders = new Dictionary<ShawDamm.InputFile, StreamReader>();  // dictionary of input data
 
@@ -373,7 +502,6 @@ namespace Landis.Extension.ShawDamm
             }
 
             _wd = Path.GetDirectoryName(inputFileName);
-
 
             // READ FIRST LINE WITH ALPHAMERIC TO SEE IF IT IS AN OLDER VERSION
             var ioutput = 2;
@@ -446,10 +574,10 @@ namespace Landis.Extension.ShawDamm
             }
             else
             {
-                _mtstep = int.Parse(t[0]);
-                _iflagsi = int.Parse(t[1]);
-                _inph2o = int.Parse(t[2]);
-                _mwatrxt = int.Parse(t[3]);
+                //_mtstep = int.Parse(t[0]);
+                //_iflagsi = int.Parse(t[1]);
+                //_inph2o = int.Parse(t[2]);
+                //_mwatrxt = int.Parse(t[3]);
             }
 
             // the next four lines specify input files. open stream readers for these.
@@ -484,35 +612,35 @@ namespace Landis.Extension.ShawDamm
 
             // **** ALLOW USER TO SPECIFY WHICH OUTPUT FILES ARE DESIRED
             var outLvls = ParseLine(inputFileReader.ReadLine()).Select(x => int.Parse(x)).ToList();
-            if (ioutput == 2)
-            {
-                var k = 0;
-                for (var i = 1; i <= 4; ++i)
-                    _lvlout[i] = outLvls[k++];
+            //if (ioutput == 2)
+            //{
+            //    var k = 0;
+            //    for (var i = 1; i <= 4; ++i)
+            //        _lvlout[i] = outLvls[k++];
 
-                _lvlout[6] = outLvls[k++];
+            //    _lvlout[6] = outLvls[k++];
 
-                for (var i = 10; i <= 13; ++i)
-                    _lvlout[i] = outLvls[k++];
+            //    for (var i = 10; i <= 13; ++i)
+            //        _lvlout[i] = outLvls[k++];
 
-                for (var i = 15; i <= 17; ++i)
-                    _lvlout[i] = outLvls[k++];
+            //    for (var i = 15; i <= 17; ++i)
+            //        _lvlout[i] = outLvls[k++];
 
-                _lvlout[20] = outLvls[k++];
-            }
-            else
-            {
-                var k = 0;
-                _lvlout[1] = outLvls[k++];
+            //    _lvlout[20] = outLvls[k++];
+            //}
+            //else
+            //{
+            //    var k = 0;
+            //    _lvlout[1] = outLvls[k++];
 
-                for (var i = 3; i <= 17; ++i)
-                    _lvlout[i] = outLvls[k++];
+            //    for (var i = 3; i <= 17; ++i)
+            //        _lvlout[i] = outLvls[k++];
 
-                _lvlout[2] = outLvls[k++];
+            //    _lvlout[2] = outLvls[k++];
 
-                for (var i = 18; i <= 20; ++i)
-                    _lvlout[i] = outLvls[k++];
-            }
+            //    for (var i = 18; i <= 20; ++i)
+            //        _lvlout[i] = outLvls[k++];
+            //}
 
             // get output file StreamWriters
             var outputFileNames = new Dictionary<ShawDamm.OutputFile, string>();
@@ -644,9 +772,8 @@ namespace Landis.Extension.ShawDamm
             //    }
             //}
 
-            // get stream writers for the output files
-            foreach (var kvp in outputFileNames)
-                _outputWriters[kvp.Key] = new StreamWriter(Path.Combine(_wd, kvp.Value));
+            //foreach (var kvp in outputFileNames)
+            //    _outputWriters[kvp.Key] = new StreamWriter(Path.Combine(_wd, kvp.Value));
 
             Console.WriteLine();
             Console.WriteLine();
@@ -655,17 +782,17 @@ namespace Landis.Extension.ShawDamm
             return true;
         }
 
-        private bool InputSiteFile(string wd, int iversion, ref int nc, ref int nsp, ref int nr, ref int ns, ref double toler, int[] level, int iflagsi, 
-            ref int mzcinp, ref int mpltgro, ref int nrchang, ref int ivlcbc, ref int itmpbc, ref double tsavg, ref int nplant, double[] plthgt, 
-            double[] pltwgt, double[] pltlai, double[] rootdp, double[] dchar, double[] tccrit, double[] rstom0, double[] rstexp, double[] pleaf0, double[] rleaf0, double[] rroot0, 
-            double[] canalb, ref double canma, ref double canmb, ref double wcmax, double[] pintrcp, double[] xangle, double[] clumpng, int[] itype, double[] zc, double[] wcandt, 
-            ref int istomate, double[][] stomate, double[] zsp, double[] dzsp, double[] rhosp, double[] tspdt, double[] dlwdt, int[] icespt, ref int isnotmp, ref double snotmp, 
-            double[] gmcdt, ref double gmcmax, ref double zrthik, ref double rload, ref double cover, ref double albres, ref double rescof, ref double restkb, double[] zs, 
-            double[][] saltdt, ref double albdry, ref double albexp, double[] dgrade, 
-            double[] sltdif, double[] asalt, double[] disper, ref double zmsrf, ref double zhsrf, ref double zersrf, ref double zmsp, ref double zhsp, ref double height, 
-            ref double pondmx, ref int jstart, ref int yrstar, ref int hrstar, ref int jend, ref int yrend, ref int nhrpdt, ref double wdt, ref double alatud, ref double slope, 
-            ref double aspect, ref double hrnoon)
+        private bool InputSiteFile(string wd, int iversion, ref int nc, int iflagsi,
+            ref int mzcinp, ref int mpltgro, ref int nrchang, ref double wcmax, double[] zc, double[] wcandt,
+            double[] zsp, double[] dzsp, double[] rhosp, double[] tspdt, double[] dlwdt, int[] icespt,
+            double[] gmcdt, ref double gmcmax, double[] zs,
+            double[][] saltdt, double[] dgrade,
+            double[] sltdif, double[] asalt, double[] disper, ref double zmsrf, ref double zhsrf, ref double zersrf, ref double zmsp, ref double zhsp,
+            ref double pondmx, ref double wdt, ref double alatud, ref double slope,
+            ref double aspect, double altdeg, double altmin, double slp, double aspec, double elev, 
+            Dictionary<string, string> thuFileData, Dictionary<string, Dictionary<string, string>> plantFileData, Dictionary<string, Dictionary<string, string>> soilFileData, out string errorMessage)
         {
+            errorMessage = string.Empty;
             //
             //     THIS SUBROUTINE IS USED TO INPUT ALL GENERAL INFORMATION AND
             //     INITIAL CONDITIONS.
@@ -693,38 +820,54 @@ namespace Landis.Extension.ShawDamm
             var satcon = 0.0;
             var dummy = 0.0;
 
-            List<string> t;
+            //StreamReader streamReader;
+
+            //if (!OpenStreamReader(Path.Combine(_wd, siteFileName), out streamReader))
+            //    return false;
+            //_inputReaders[ShawDamm.InputFile.SiteDescriptionData] = streamReader;
+
+            List<string> t = null;
             var generalOut = _outputWriters[OutputFile.EntireProfile];
 
             // READ (11,100) TITLE
-            var title = ReadNextLine(InputFile.SiteDescriptionData).Trim();
+            //var title = ReadNextLine(InputFile.SiteDescriptionData).Trim();
 
+            // line B
             // READ (11,*) JSTART,HRSTAR,YRSTAR,JEND,YREND
-            t = ParseNextLine(InputFile.SiteDescriptionData);
-            jstart = int.Parse(t[0]); hrstar = int.Parse(t[1]); yrstar = int.Parse(t[2]); jend = int.Parse(t[3]); yrend = int.Parse(t[4]);
+            //t = ParseNextLine(InputFile.SiteDescriptionData);
+            /*jstart = int.Parse(t[0]); hrstar = int.Parse(t[1]); yrstar = int.Parse(t[2]); jend = int.Parse(t[3]); yrend = int.Parse(t[4]);*/
 
+            // line C
             // READ (11,*) ALTDEG,ALTMIN,SLP,ASPEC,HRNOON,ELEV
-            t = ParseNextLine(InputFile.SiteDescriptionData);
-            var altdeg = double.Parse(t[0]); var altmin = double.Parse(t[1]); var slp = double.Parse(t[2]); var aspec = double.Parse(t[3]); hrnoon = double.Parse(t[4]); var elev = double.Parse(t[5]);
+            //t = ParseNextLine(InputFile.SiteDescriptionData);
+            //var altdeg = double.Parse(t[0]); var altmin = double.Parse(t[1]); var slp = double.Parse(t[2]); var aspec = double.Parse(t[3]); hrnoon = double.Parse(t[4]); var elev = double.Parse(t[5]);
 
+            // line D
             // READ (11,*) NPLANT,NSP,NR,NS,NSALT,TOLER,NHRPDT,(LEVEL(I), I=1,6)
-            t = ParseNextLine(InputFile.SiteDescriptionData);
-            nplant = int.Parse(t[0]); nsp = int.Parse(t[1]); nr = int.Parse(t[2]); ns = int.Parse(t[3]); _slparm.Nsalt = int.Parse(t[4]); toler = double.Parse(t[5]); nhrpdt = int.Parse(t[6]);
-            for (var i = 1; i <= 6; ++i)
-                level[i] = int.Parse(t[6 + i]);
+            //t = ParseNextLine(InputFile.SiteDescriptionData);
+            // nplant = int.Parse(t[0]); _nsp = int.Parse(t[1]); nr = int.Parse(t[2]); */ _ns = int.Parse(t[3]); // _slparm.Nsalt = int.Parse(t[4]); toler = double.Parse(t[5]);  nhrpdt = int.Parse(t[6]);
 
-            if (hrstar == 0)
-            {
-                //        CONVERT TO 24 HOURS FOR EASE IN FINDING INITIAL CONDITIONS
-                hrstar = 24;
-                jstart = jstart - 1;
-            }
+            _nsp = 0;
+            _slparm.Nsalt = 0;
+
+            if (!SimpleFileParser.TryParseInput("NumberLitterNodes", thuFileData["NumberLitterNodes"], out _nr, out errorMessage, 0))
+                return false;
+
+            //for (var i = 1; i <= 6; ++i)
+            //    level[i] = int.Parse(t[6 + i]);
+
+            //if (hrstar == 0)
+            //{
+            //    //        CONVERT TO 24 HOURS FOR EASE IN FINDING INITIAL CONDITIONS
+            //    hrstar = 24;
+            //    jstart = jstart - 1;
+            //}
             _constn.Presur = 101300.0 * Math.Exp(-elev / 8278.0);
 
-            generalOut.WriteLine(title);
-            generalOut.WriteLine();
-            generalOut.WriteLine($"     SIMULATION BEGINS ON DAY{jstart,4:D}, HOUR{hrstar,3:D}, OF {yrstar,4:D}");
-            generalOut.WriteLine($"     SIMULATION ENDS   ON DAY{jend,4:D}, HOUR 24  OF {yrend,4:D}");
+            //generalOut.WriteLine(title);
+            //generalOut.WriteLine();
+            //generalOut.WriteLine($"     SIMULATION BEGINS ON DAY{_jstart,4:D}, HOUR{_hrstar,3:D}, OF {_yrstar,4:D}");
+            //generalOut.WriteLine($"     SIMULATION ENDS   ON DAY{_jend,4:D}, HOUR 24  OF {_yrend,4:D}");
 
             // ISSUE STATEMENT FOR INPUT VERSION AND WEATHER FILE FORMAT
             Console.WriteLine();
@@ -758,7 +901,7 @@ namespace Landis.Extension.ShawDamm
             generalOut.WriteLine($"     LATITUDE  : {altdeg,5:F1} DEGREES {altmin,5:F2} MINUTES");
             generalOut.WriteLine($"     SLOPE     : {slp,5:F2} %");
             generalOut.WriteLine($"     ASPECT    : {aspec,5:F1} DEGREES FROM NORTH");
-            generalOut.WriteLine($"     SOLAR NOON: {hrnoon,5:F2} HOURS");
+            generalOut.WriteLine($"     SOLAR NOON: {_hrnoon,5:F2} HOURS");
             generalOut.WriteLine($"     ELEVATION : {elev,5:F} M");
             generalOut.WriteLine($"     PRESSURE  : {_constn.Presur / 1000.0,5:F1} KPA");
 
@@ -766,7 +909,7 @@ namespace Landis.Extension.ShawDamm
             alatud = (altdeg + altmin / 60.0) * 3.14159 / 180.0;
             slope = Math.Atan(slp / 100.0);
             aspect = aspec * 3.14159 / 180.0;
-            if (nhrpdt == 1)
+            if (_nhrpdt == 1)
             {
                 wdt = 0.6;
             }
@@ -777,7 +920,7 @@ namespace Landis.Extension.ShawDamm
             //
 
             //      CHECK IF NHRPDT IS VALID
-            if (24 % nhrpdt != 0)
+            if (24 % _nhrpdt != 0)
             {
                 Console.WriteLine();
                 Console.WriteLine(" ************************************************");
@@ -797,7 +940,7 @@ namespace Landis.Extension.ShawDamm
             }
 
             //      CHECK IF HRSTAR IS COMPATIBLE WITH NHRPDT
-            if (hrstar % nhrpdt != 0)
+            if (_hrstar % _nhrpdt != 0)
             {
                 Console.WriteLine();
                 Console.WriteLine(" **************************************************");
@@ -822,24 +965,24 @@ namespace Landis.Extension.ShawDamm
 
             // **** INPUT AERODYNAMIC ATMOSPHERIC AND SURFACE PROPERTIES
             // READ (11,*) ZMCM,HEIGHT,PONDCM
-            t = ParseNextLine(InputFile.SiteDescriptionData);
-            var zmcm = double.Parse(t[0]); height = double.Parse(t[1]); var pondcm = double.Parse(t[2]);
+            //t = ParseNextLine(InputFile.SiteDescriptionData);
+            //var zmcm = double.Parse(t[0]); height = double.Parse(t[1]); var pondcm = double.Parse(t[2]);
 
-            zmsrf = zmcm / 100.0;
+            zmsrf = _zmcm / 100.0;
             zhsrf = 0.2 * zmsrf;
             zhcm = zhsrf * 100.0;
-            pondmx = pondcm / 100.0;
+            pondmx = _pondcm / 100.0;
             zersrf = 0.0;
 
             generalOut.WriteLine();
             generalOut.WriteLine();
             generalOut.WriteLine(" WIND PROFILE AND SURFACE PARAMETERS");
             generalOut.WriteLine();
-            generalOut.WriteLine($"     ZM :{zmcm,5:F2} CM FOR SOIL OR RESIDUE SURFACE ");
+            generalOut.WriteLine($"     ZM :{_zmcm,5:F2} CM FOR SOIL OR RESIDUE SURFACE ");
             generalOut.WriteLine($"     ZH :{zhcm,5:F2} CM FOR SOIL OR RESIDUE SURFACE ");
             generalOut.WriteLine($"     ZERO PLANE DISPLACEMENT :{zersrf,5:F2} M");
-            generalOut.WriteLine($"     HEIGHT OF INSTRUMENTATION :{height,5:F1} M");
-            generalOut.WriteLine($"     MAXIMUM DEPTH OF PONDING :{pondcm,4:F1} CM");
+            generalOut.WriteLine($"     HEIGHT OF INSTRUMENTATION :{_height,5:F1} M");
+            generalOut.WriteLine($"     MAXIMUM DEPTH OF PONDING :{_pondcm,4:F1} CM");
             generalOut.WriteLine();
             generalOut.WriteLine();
             generalOut.WriteLine(" ATMOSPHERIC CONDITIONS");
@@ -847,26 +990,120 @@ namespace Landis.Extension.ShawDamm
             generalOut.WriteLine($"     MAXIMUM CLEAR-SKY TRANSMISSIVITY :{Swrcoe.Difatm,5:F2}");
             generalOut.WriteLine($"     CLEAR-SKY LONG-WAVE EMISSIVITY PARAMETERS :{Lwrcof.Ematm1,6:F3}{Lwrcof.Ematm2,15:E3}");
 
-            if (nplant > 0)
+            // set plant inputs
+            var jj = 1;
+            while (true)
+            {
+                var key = $"VegetationType{jj}";
+                if (!thuFileData.TryGetValue(key, out var vegType) || string.IsNullOrEmpty(vegType))
+                    break;
+
+                if (!plantFileData.TryGetValue(vegType, out var plantData))
+                {
+                    errorMessage = $"Plant data for {key} '{vegType}' not found";
+                    return false;
+                }
+
+                if (!SimpleFileParser.TryParseInput($"{vegType} : LeafOnDay", plantData["LeafOnDay"], out _pltLeafOn[jj], out errorMessage, 1, 366))
+                    return false;
+
+                if (!SimpleFileParser.TryParseInput($"{vegType} : LeafOffDay", plantData["LeafOffDay"], out _pltLeafOff[jj], out errorMessage, 1, 366))
+                    return false;
+
+                if (!SimpleFileParser.TryParseInput($"{vegType} : DryBiomass", plantData["DryBiomass"], out _pltwgt[jj], out errorMessage, 0.0))
+                    return false;
+
+                if (!SimpleFileParser.TryParseInput($"{vegType} : LAI", plantData["LAI"], out _pltlaiOn[jj], out errorMessage, 0.0))
+                    return false;
+
+                if (!SimpleFileParser.TryParseInput($"{vegType} : Height", plantData["Height"], out _plthgt[jj], out errorMessage, 0.0))
+                    return false;
+
+                if (!SimpleFileParser.TryParseInput($"{vegType} : RootingDepth", plantData["RootingDepth"], out _rootdp[jj], out errorMessage, 0.0))
+                    return false;
+
+                if (!SimpleFileParser.TryParseInput($"{vegType} : CharacteristicDimension", plantData["CharacteristicDimension"], out _dchar[jj], out errorMessage, 0.0))
+                    return false;
+
+                if (!SimpleFileParser.TryParseInput($"{vegType} : ClumpingParameter", plantData["ClumpingParameter"], out _clumpng[jj], out errorMessage, 0.0, 1.0, false))
+                    return false;
+
+                if (!SimpleFileParser.TryParseInput($"{vegType} : PlantType", plantData["PlantType"], out _itype[jj], out errorMessage, 0, 1))
+                    return false;
+
+                if (!SimpleFileParser.TryParseInput($"{vegType} : MaxPrecipInterceptPerLAI", plantData["MaxPrecipInterceptPerLAI"], out _pintrcp[jj], out errorMessage, 0.0))
+                    return false;
+
+                if (!SimpleFileParser.TryParseInput($"{vegType} : LeafAngleVertical", plantData["LeafAngleVertical"], out _xangle[jj], out errorMessage, 0.0, 5.0))
+                    return false;
+
+                if (!SimpleFileParser.TryParseInput($"{vegType} : Albedo", plantData["Albedo"], out _canalb[jj], out errorMessage, 0.0, 1.0))
+                    return false;
+
+                if (!SimpleFileParser.TryParseInput($"{vegType} : MinTranspirationTemp", plantData["MinTranspirationTemp"], out _tccrit[jj], out errorMessage, SimpleFileParser.AbsZero))
+                    return false;
+
+                if (!SimpleFileParser.TryParseInput($"{vegType} : MinStomatalResistance", plantData["MinStomatalResistance"], out _rstom0[jj], out errorMessage, 0.0))
+                    return false;
+
+                if (!SimpleFileParser.TryParseInput($"{vegType} : StomatalResistanceExponent", plantData["StomatalResistanceExponent"], out _rstexp[jj], out errorMessage))
+                    return false;
+
+                if (!SimpleFileParser.TryParseInput($"{vegType} : CriticalLeafWaterPotential", plantData["CriticalLeafWaterPotential"], out _pleaf0[jj], out errorMessage))
+                    return false;
+
+                if (!SimpleFileParser.TryParseInput($"{vegType} : LeafResistance", plantData["LeafResistance"], out _rleaf0[jj], out errorMessage, 0.0))
+                    return false;
+
+                if (!SimpleFileParser.TryParseInput($"{vegType} : RootResistance", plantData["RootResistance"], out _rroot0[jj], out errorMessage, 0.0))
+                    return false;
+
+                if (_istomate == 2)
+                {
+                    //           Option for Jarvis-Stewart stomatal resistance model
+                    if (!SimpleFileParser.TryParseInput($"{vegType} : SolarRadiationInfluence", plantData["SolarRadiationInfluence"], out _stomate[jj][1], out errorMessage, 0.0))
+                        return false;
+
+                    if (!SimpleFileParser.TryParseInput($"{vegType} : TranspirationLowerLimit", plantData["TranspirationLowerLimit"], out _stomate[jj][2], out errorMessage))
+                        return false;
+
+                    if (!SimpleFileParser.TryParseInput($"{vegType} : TranspirationUpperLimit", plantData["TranspirationUpperLimit"], out _stomate[jj][3], out errorMessage, SimpleFileParser.AbsZero))
+                        return false;
+
+                    if (!SimpleFileParser.TryParseInput($"{vegType} : TranspirationOptimum", plantData["TranspirationOptimum"], out _stomate[jj][4], out errorMessage, SimpleFileParser.AbsZero))
+                        return false;
+
+                    if (!SimpleFileParser.TryParseInput($"{vegType} : VPDMaximumReduction", plantData["VPDMaximumReduction"], out _stomate[jj][5], out errorMessage, 0.0, 1.0, false))
+                        return false;
+
+                    if (!SimpleFileParser.TryParseInput($"{vegType} : StomatalConductanceCoefficient", plantData["StomatalConductanceCoefficient"], out _stomate[jj][6], out errorMessage, 0.0, 1.0, false))
+                        return false;
+                }
+
+                ++jj;
+            }
+            _nplant = jj - 1;
+
+            if (_nplant > 0)
             {
                 if (iversion == 2)
                 {
-                    // READ (11,*) MCANFLG,CANMA,CANMB,WCAN
-                    t = ParseNextLine(InputFile.SiteDescriptionData);
-                    mcanflg = int.Parse(t[0]); canma = double.Parse(t[1]); canmb = double.Parse(t[2]); wcan = double.Parse(t[3]);
-                    istomate = 1;
+                    //// READ (11,*) MCANFLG,CANMA,CANMB,WCAN
+                    //t = ParseNextLine(InputFile.SiteDescriptionData);
+                    //mcanflg = int.Parse(t[0]); canma = double.Parse(t[1]); canmb = double.Parse(t[2]); wcan = double.Parse(t[3]);
+                    //istomate = 1;
                 }
                 else
                 {
                     // READ (11,*) MCANFLG,ISTOMATE,CANMA,CANMB,WCAN
-                    t = ParseNextLine(InputFile.SiteDescriptionData);
-                    mcanflg = int.Parse(t[0]); istomate = int.Parse(t[1]); canma = double.Parse(t[2]); canmb = double.Parse(t[3]); wcan = double.Parse(t[4]);
+                    //t = ParseNextLine(InputFile.SiteDescriptionData);
+                    // mcanflg = int.Parse(t[0]);  istomate = int.Parse(t[1]); canma = double.Parse(t[2]); canmb = double.Parse(t[3]);  wcan = double.Parse(t[4]);
                 }
                 //
                 //        DETERMINE MAXIMUM WATER CONTENT OF STANDING DEAD (AT 99.9% RH)
                 var double999 = 0.999;
                 var double0 = 0.0;
-                Canhum(2, ref double999, ref dummy, ref wcmax, ref double0, ref canma, ref canmb);
+                Canhum(2, ref double999, ref dummy, ref wcmax, ref double0, ref _canma, ref _canmb);
                 if (wcan > wcmax) wcan = wcmax;
                 //        SET WCANTDT ARRAY TO THE INPUT DEAD PLANT WATER CONTENT
                 for (var i = 1; i < wcandt.Length; ++i)
@@ -902,22 +1139,23 @@ namespace Landis.Extension.ShawDamm
                     //           MODEL WILL GENERATE SPACING OF NODES WITHIN THE CANOPY
                     mzcinp = 0;
                 }
-                for (var j = 1; j <= nplant; ++j)
+
+                for (var j = 1; j <= _nplant; ++j)
                 {
                     if (iversion == 2)
                     {
                         // READ (11,*) ITYPE(J),XANGLE(J),CANALB(J),TCCRIT(J),RSTOM0(J),RSTEXP(J),PLEAF0(J),RLEAF0(J),RROOT0(J)
                         t = ParseNextLine(InputFile.SiteDescriptionData);
-                        itype[j] = int.Parse(t[0]); xangle[j] = double.Parse(t[1]); canalb[j] = double.Parse(t[2]); tccrit[j] = double.Parse(t[3]); rstom0[j] = double.Parse(t[4]); rstexp[j] = double.Parse(t[5]); pleaf0[j] = double.Parse(t[6]); rleaf0[j] = double.Parse(t[7]); rroot0[j] = double.Parse(t[8]);
+                        _itype[j] = int.Parse(t[0]); _xangle[j] = double.Parse(t[1]); _canalb[j] = double.Parse(t[2]); _tccrit[j] = double.Parse(t[3]); _rstom0[j] = double.Parse(t[4]); _rstexp[j] = double.Parse(t[5]); _pleaf0[j] = double.Parse(t[6]); _rleaf0[j] = double.Parse(t[7]); _rroot0[j] = double.Parse(t[8]);
                         //            SET MAX RAINFALL INTERCEPTION TO 1 MM PER LAI
-                        pintrcp[j] = 0.001;
+                        _pintrcp[j] = 0.001;
                     }
                     else
                     {
                         // READ (11,*) ITYPE(J),PINTRCP(J),XANGLE(J),CANALB(J),TCCRIT(J),RSTOM0(J),RSTEXP(J),PLEAF0(J),RLEAF0(J),RROOT0(J)
-                        t = ParseNextLine(InputFile.SiteDescriptionData);
-                        itype[j] = int.Parse(t[0]); pintrcp[j] = double.Parse(t[1]); xangle[j] = double.Parse(t[2]); canalb[j] = double.Parse(t[3]); tccrit[j] = double.Parse(t[4]); rstom0[j] = double.Parse(t[5]); rstexp[j] = double.Parse(t[6]); pleaf0[j] = double.Parse(t[7]); rleaf0[j] = double.Parse(t[8]); rroot0[j] = double.Parse(t[9]);
-                        pintrcp[j] = pintrcp[j] / 1000.0;
+                        //t = ParseNextLine(InputFile.SiteDescriptionData);
+                        //itype[j] = int.Parse(t[0]); pintrcp[j] = double.Parse(t[1]); xangle[j] = double.Parse(t[2]); canalb[j] = double.Parse(t[3]); tccrit[j] = double.Parse(t[4]); rstom0[j] = double.Parse(t[5]); rstexp[j] = double.Parse(t[6]); pleaf0[j] = double.Parse(t[7]); rleaf0[j] = double.Parse(t[8]); rroot0[j] = double.Parse(t[9]);
+                        _pintrcp[j] = _pintrcp[j] / 1000.0;
                     }
                 label1010:;
                 }
@@ -927,54 +1165,54 @@ namespace Landis.Extension.ShawDamm
                 generalOut.WriteLine(" CANOPY PARAMETERS");
                 generalOut.WriteLine();
                 generalOut.WriteLine($"     EMISSIVITY OF PLANT MATERIAL :{Lwrcof.Emitc,5:F2}");
-                generalOut.WriteLine($"     MOISTURE PARAMETERS FOR ANY DEAD PLANT MATERIAL  :{canma,7:F2}{canmb,5:F2}");
+                generalOut.WriteLine($"     MOISTURE PARAMETERS FOR ANY DEAD PLANT MATERIAL  :{_canma,7:F2}{_canmb,5:F2}");
                 generalOut.WriteLine($"     INITIAL MOISTURE CONTENT FOR DEAD PLANT MATERIAL :{wcandt[1],5:F2} KG/KG");
                 generalOut.WriteLine($"     MAXIMUM MOISTURE CONTENT FOR DEAD PLANT MATERIAL :{wcmax,5:F2} KG/KG");
                 generalOut.WriteLine();
-                generalOut.WriteLine($"                                           {string.Concat(Enumerable.Range(1, nplant).Select(j => $"  PLANT #{j}"))}");
+                generalOut.WriteLine($"                                           {string.Concat(Enumerable.Range(1, _nplant).Select(j => $"  PLANT #{j}"))}");
 
-                generalOut.WriteLine($"     PLANT TYPE (0=DEAD,1=TRANSPIRING)    :{string.Concat(Enumerable.Range(1, nplant).Select(j => $"{itype[j],10:D}"))}");
-                generalOut.WriteLine($"     MAX PRECIP INTERCEPTION PER LAI (MM) :{string.Concat(Enumerable.Range(1, nplant).Select(j => $"{pintrcp[j] * 1000.0,10:F2}"))}");
-                generalOut.WriteLine($"     LEAF ANGLE (0=VERT,1=RANDOM,INF=HORZ):{string.Concat(Enumerable.Range(1, nplant).Select(j => $"{xangle[j],10:F2}"))}");
-                generalOut.WriteLine($"     ALBEDO                               :{string.Concat(Enumerable.Range(1, nplant).Select(j => $"{canalb[j],10:F2}"))}");
-                generalOut.WriteLine($"     MIN. TRANSPIRATION TEMPERATURE (C)   :{string.Concat(Enumerable.Range(1, nplant).Select(j => $"{tccrit[j],10:F2}"))}");
-                generalOut.WriteLine($"     MINIMUM STOMATAL RESISTANCE (S/M)    :{string.Concat(Enumerable.Range(1, nplant).Select(j => $"{rstom0[j],10:F2}"))}");
-                generalOut.WriteLine($"     STOMATAL RESISTANCE EXPONENT         :{string.Concat(Enumerable.Range(1, nplant).Select(j => $"{rstexp[j],10:F2}"))}");
-                generalOut.WriteLine($"     CRITICAL LEAF WATER POTENTIAL (M)    :{string.Concat(Enumerable.Range(1, nplant).Select(j => $"{pleaf0[j],10:F2}"))}");
-                generalOut.WriteLine($"     LEAF RESISTANCE (KG/M2-S)            :{string.Concat(Enumerable.Range(1, nplant).Select(j => $"{rleaf0[j],10:E2}"))}");
-                generalOut.WriteLine($"     ROOT RESISTANCE (KG/M2-S)            :{string.Concat(Enumerable.Range(1, nplant).Select(j => $"{rroot0[j],10:E2}"))}");
+                generalOut.WriteLine($"     PLANT TYPE (0=DEAD,1=TRANSPIRING)    :{string.Concat(Enumerable.Range(1, _nplant).Select(j => $"{_itype[j],10:D}"))}");
+                generalOut.WriteLine($"     MAX PRECIP INTERCEPTION PER LAI (MM) :{string.Concat(Enumerable.Range(1, _nplant).Select(j => $"{_pintrcp[j] * 1000.0,10:F2}"))}");
+                generalOut.WriteLine($"     LEAF ANGLE (0=VERT,1=RANDOM,INF=HORZ):{string.Concat(Enumerable.Range(1, _nplant).Select(j => $"{_xangle[j],10:F2}"))}");
+                generalOut.WriteLine($"     ALBEDO                               :{string.Concat(Enumerable.Range(1, _nplant).Select(j => $"{_canalb[j],10:F2}"))}");
+                generalOut.WriteLine($"     MIN. TRANSPIRATION TEMPERATURE (C)   :{string.Concat(Enumerable.Range(1, _nplant).Select(j => $"{_tccrit[j],10:F2}"))}");
+                generalOut.WriteLine($"     MINIMUM STOMATAL RESISTANCE (S/M)    :{string.Concat(Enumerable.Range(1, _nplant).Select(j => $"{_rstom0[j],10:F2}"))}");
+                generalOut.WriteLine($"     STOMATAL RESISTANCE EXPONENT         :{string.Concat(Enumerable.Range(1, _nplant).Select(j => $"{_rstexp[j],10:F2}"))}");
+                generalOut.WriteLine($"     CRITICAL LEAF WATER POTENTIAL (M)    :{string.Concat(Enumerable.Range(1, _nplant).Select(j => $"{_pleaf0[j],10:F2}"))}");
+                generalOut.WriteLine($"     LEAF RESISTANCE (KG/M2-S)            :{string.Concat(Enumerable.Range(1, _nplant).Select(j => $"{_rleaf0[j],10:E2}"))}");
+                generalOut.WriteLine($"     ROOT RESISTANCE (KG/M2-S)            :{string.Concat(Enumerable.Range(1, _nplant).Select(j => $"{_rroot0[j],10:E2}"))}");
 
-                if (istomate == 2)
+                if (_istomate == 2)
                 {
                     //           Option for Jarvis-Stewart stomatal resistance model
-                    for (var j = 1; j <= nplant; ++j)
+                    for (var j = 1; j <= _nplant; ++j)
                     {
                         // read(11, *)(stomate(j, k), k = 1, 7);
-                        t = ParseNextLine(InputFile.SiteDescriptionData);
-                        for (var k = 1; k <= 7; ++k)
-                            stomate[j][k] = double.Parse(t[k - 1]);
+                        //t = ParseNextLine(InputFile.SiteDescriptionData);
+                        //for (var k = 1; k <= 7; ++k)
+                        //    stomate[j][k] = double.Parse(t[k - 1]);
 
                         //             COMPUTE EXPONENT FOR TEMPERATURE MODEL
-                        stomate[j][10] = (stomate[j][3] - stomate[j][4]) / (stomate[j][4] - stomate[j][2]);
+                        _stomate[j][10] = (_stomate[j][3] - _stomate[j][4]) / (_stomate[j][4] - _stomate[j][2]);
                     }
 
                     generalOut.WriteLine("     STEWART-JARVIS STOMATAL PARAMETERS:");
-                    generalOut.WriteLine($"        SOLAR PARAMETER                   :{string.Concat(Enumerable.Range(1, nplant).Select(j => $"{stomate[j][1],10:F1}"))}");
-                    generalOut.WriteLine($"        LOW TEMPERATURE LIMIT FOR TRANSP. :{string.Concat(Enumerable.Range(1, nplant).Select(j => $"{stomate[j][2],10:F1}"))}");
-                    generalOut.WriteLine($"        HIGH TEMPERATURE LIMIT FOR TRANSP.:{string.Concat(Enumerable.Range(1, nplant).Select(j => $"{stomate[j][3],10:F1}"))}");
-                    generalOut.WriteLine($"        OPTIMAL TEMPERATURE FOR TRANSP.   :{string.Concat(Enumerable.Range(1, nplant).Select(j => $"{stomate[j][4],10:F1}"))}");
-                    generalOut.WriteLine($"        MAX REDUCTION FOR VPD             :{string.Concat(Enumerable.Range(1, nplant).Select(j => $"{stomate[j][5],10:F3}"))}");
-                    generalOut.WriteLine($"        VAPOR PRESSURE DEFICIT PARAMETER  :{string.Concat(Enumerable.Range(1, nplant).Select(j => $"{stomate[j][6],10:F3}"))}");
+                    generalOut.WriteLine($"        SOLAR PARAMETER                   :{string.Concat(Enumerable.Range(1, _nplant).Select(j => $"{_stomate[j][1],10:F1}"))}");
+                    generalOut.WriteLine($"        LOW TEMPERATURE LIMIT FOR TRANSP. :{string.Concat(Enumerable.Range(1, _nplant).Select(j => $"{_stomate[j][2],10:F1}"))}");
+                    generalOut.WriteLine($"        HIGH TEMPERATURE LIMIT FOR TRANSP.:{string.Concat(Enumerable.Range(1, _nplant).Select(j => $"{_stomate[j][3],10:F1}"))}");
+                    generalOut.WriteLine($"        OPTIMAL TEMPERATURE FOR TRANSP.   :{string.Concat(Enumerable.Range(1, _nplant).Select(j => $"{_stomate[j][4],10:F1}"))}");
+                    generalOut.WriteLine($"        MAX REDUCTION FOR VPD             :{string.Concat(Enumerable.Range(1, _nplant).Select(j => $"{_stomate[j][5],10:F3}"))}");
+                    generalOut.WriteLine($"        VAPOR PRESSURE DEFICIT PARAMETER  :{string.Concat(Enumerable.Range(1, _nplant).Select(j => $"{_stomate[j][6],10:F3}"))}");
                 }
 
                 //         CONVERT RLEAF0 AND RROOT0 TO FROM RESISTANCE TO CONDUCTANCE
                 //         IF PLANT IS TRANSPIRING
-                for (var j = 1; j <= nplant; ++j)
+                for (var j = 1; j <= _nplant; ++j)
                 {
-                    if (itype[j] > 0)
+                    if (_itype[j] > 0)
                     {
-                        rleaf0[j] = 1.0 / rleaf0[j];
-                        rroot0[j] = 1.0 / rroot0[j];
+                        _rleaf0[j] = 1.0 / _rleaf0[j];
+                        _rroot0[j] = 1.0 / _rroot0[j];
                     }
                 }
 
@@ -982,9 +1220,9 @@ namespace Landis.Extension.ShawDamm
                 {
                     //            OPEN FILES FOR PLANT GROWTH
                     generalOut.WriteLine("     INPUT FILES FOR PLANT GROWTH:");
-                    _canopyReaders = new StreamReader[nplant + 1];
+                    _canopyReaders = new StreamReader[_nplant + 1];
                     var fileReadErrors = new List<string>();
-                    for (var j = 1; j <= nplant; ++j)
+                    for (var j = 1; j <= _nplant; ++j)
                     {
                         var file = ReadNextLine(InputFile.SiteDescriptionData);
                         generalOut.WriteLine($"          PLANT #{j}: {file}");
@@ -1036,23 +1274,23 @@ namespace Landis.Extension.ShawDamm
                 {
                     //            READ IN PLANT PARAMETERS (ASSUMED TO BE CONSTANT FOR
                     //            ENTIRE SIMULATION)
-                    for (var j = 1; j <= nplant; ++j)
+                    for (var j = 1; j <= _nplant; ++j)
                     {
                         if (iversion == 2)
                         {
                             // read(11,*)plthgt(j),dchar(j),pltwgt(j),pltlai(j),rootdp(j)
                             t = ParseNextLine(InputFile.SiteDescriptionData);
-                            plthgt[j] = double.Parse(t[0]); dchar[j] = double.Parse(t[1]); pltwgt[j] = double.Parse(t[2]); pltlai[j] = double.Parse(t[3]); rootdp[j] = double.Parse(t[4]);
-                            clumpng[j] = 1.0;
+                            _plthgt[j] = double.Parse(t[0]); _dchar[j] = double.Parse(t[1]); _pltwgt[j] = double.Parse(t[2]); _pltlai[j] = double.Parse(t[3]); _rootdp[j] = double.Parse(t[4]);
+                            _clumpng[j] = 1.0;
                         }
                         else
                         {
                             // read(11,*)plthgt(j),dchar(j),clumpng(j),pltwgt(j),pltlai(j),rootdp(j)
-                            t = ParseNextLine(InputFile.SiteDescriptionData);
-                            plthgt[j] = double.Parse(t[0]); dchar[j] = double.Parse(t[1]); clumpng[j] = double.Parse(t[2]); pltwgt[j] = double.Parse(t[3]); pltlai[j] = double.Parse(t[4]); rootdp[j] = double.Parse(t[5]);
+                            //t = ParseNextLine(InputFile.SiteDescriptionData);
+                            //plthgt[j] = double.Parse(t[0]); dchar[j] = double.Parse(t[1]); clumpng[j] = double.Parse(t[2]); pltwgt[j] = double.Parse(t[3]); pltlai[j] = double.Parse(t[4]); rootdp[j] = double.Parse(t[5]);
                         }
                         //               CONVERT LEAF DIMENSION FROM CM TO METERS
-                        dchar[j] = dchar[j] / 100.0;
+                        _dchar[j] = _dchar[j] / 100.0;
                     }
                 }
                 else // line 2212
@@ -1061,11 +1299,11 @@ namespace Landis.Extension.ShawDamm
                     {
                         //               USER INPUT OF ROOT DISTRIBUTION - THIS WAS MOVED DOWN IN
                         //               SUBSEQUENT VERSIONS OF MODEL
-                        for (var j = 1; j <= nplant; ++j)
+                        for (var j = 1; j <= _nplant; ++j)
                         {
                             //read(11, *)(rootdn(j, i), i = 1, ns);
                             t = ParseNextLine(InputFile.SiteDescriptionData);
-                            for (var k = 1; k <= ns; ++k)
+                            for (var k = 1; k <= _ns; ++k)
                                 _clayrs.Rootdn[j][k] = double.Parse(t[k - 1]);
                         }
                     }
@@ -1079,9 +1317,9 @@ namespace Landis.Extension.ShawDamm
                     //            THE CANOPY (ASSUMED TO BE CONSTANT FOR ENTIRE SIMULATION)
 
                     generalOut.WriteLine();
-                    generalOut.WriteLine($"             H2O IN     {string.Concat(Enumerable.Range(1, nplant).Select(j => $"---------plantspecies#{j}------- "))}");
-                    generalOut.WriteLine($"     DEPTH  DEAD MATL  {string.Concat(Enumerable.Repeat("  CHAR.DIM. CLUMPING BIOMASS  LAI", nplant))}))");
-                    generalOut.WriteLine($"      (M)     (KG/KG)  {string.Concat(Enumerable.Repeat("     (CM)    FACTOR  (KG/M2)     ", nplant))}))");
+                    generalOut.WriteLine($"             H2O IN     {string.Concat(Enumerable.Range(1, _nplant).Select(j => $"---------plantspecies#{j}------- "))}");
+                    generalOut.WriteLine($"     DEPTH  DEAD MATL  {string.Concat(Enumerable.Repeat("  CHAR.DIM. CLUMPING BIOMASS  LAI", _nplant))}))");
+                    generalOut.WriteLine($"      (M)     (KG/KG)  {string.Concat(Enumerable.Repeat("     (CM)    FACTOR  (KG/M2)     ", _nplant))}))");
 
                     if (iversion == 2)
                     {
@@ -1091,15 +1329,15 @@ namespace Landis.Extension.ShawDamm
                         for (var i = 1; i <= nc; ++i)
                         {
                             zc[i] = double.Parse(t[k++]);
-                            for (var j = 1; j <= nplant; ++j)
+                            for (var j = 1; j <= _nplant; ++j)
                             {
-                                dchar[j] = double.Parse(t[k++]);
+                                _dchar[j] = double.Parse(t[k++]);
                                 _clayrs.Drycan[j][i] = double.Parse(t[k++]);
                                 _clayrs.Canlai[j][i] = double.Parse(t[k++]);
                             }
                         }
-                        for (var i = 1; i < clumpng.Length; ++i)
-                            clumpng[i] = 1.0;
+                        for (var i = 1; i < _clumpng.Length; ++i)
+                            _clumpng[i] = 1.0;
                     }
                     else
                     {
@@ -1109,10 +1347,10 @@ namespace Landis.Extension.ShawDamm
                         for (var i = 1; i <= nc; ++i)
                         {
                             zc[i] = double.Parse(t[k++]);
-                            for (var j = 1; j <= nplant; ++j)
+                            for (var j = 1; j <= _nplant; ++j)
                             {
-                                dchar[j] = double.Parse(t[k++]);
-                                clumpng[j] = double.Parse(t[k++]);
+                                _dchar[j] = double.Parse(t[k++]);
+                                _clumpng[j] = double.Parse(t[k++]);
                                 _clayrs.Drycan[j][i] = double.Parse(t[k++]);
                                 _clayrs.Canlai[j][i] = double.Parse(t[k++]);
                             }
@@ -1122,7 +1360,7 @@ namespace Landis.Extension.ShawDamm
                     for (var i = 1; i <= nc; ++i)
                     {
                         //WRITE(21, 187)ZC(I),WCANDT(I),()(dchar[j], clumpng[j], _clayrs.Drycan(j, i), _clayrs.Canlai(j, i), j = 1, nplant);
-                        generalOut.WriteLine($"     {zc[i],5:F2}{wcandt[i],9:F2}    {string.Concat(Enumerable.Range(1, nplant).Select(j => $"{dchar[j],8:F2}{clumpng[j],9:F2}{_clayrs.Drycan[j][i],9:F2}{_clayrs.Canlai[j][i],7:F2}"))}");
+                        generalOut.WriteLine($"     {zc[i],5:F2}{wcandt[i],9:F2}    {string.Concat(Enumerable.Range(1, _nplant).Select(j => $"{_dchar[j],8:F2}{_clumpng[j],9:F2}{_clayrs.Drycan[j][i],9:F2}{_clayrs.Canlai[j][i],7:F2}"))}");
                     }
 
                     zc[nc + 1] = double.Parse(ReadNextLine(InputFile.SiteDescriptionData));
@@ -1130,44 +1368,44 @@ namespace Landis.Extension.ShawDamm
 
                     generalOut.WriteLine();
                     generalOut.WriteLine("     ROOT DENSITY PROFILE:");
-                    generalOut.WriteLine($"     SOIL LAYER            :{string.Concat(Enumerable.Range(1, ns).Select(i => $"{i,5:D}"))}");
+                    generalOut.WriteLine($"     SOIL LAYER            :{string.Concat(Enumerable.Range(1, _ns).Select(i => $"{i,5:D}"))}");
 
-                    for (var j = 1; j <= nplant; ++j)
+                    for (var j = 1; j <= _nplant; ++j)
                     {
                         if (iversion > 2)
                         {
                             //read(11, *)(_clayrs.Rootdn[j][i], i = 1, ns);
                             t = ParseNextLine(InputFile.SiteDescriptionData);
-                            for (var i = 1; i <= ns; ++i)
+                            for (var i = 1; i <= _ns; ++i)
                                 _clayrs.Rootdn[j][i] = double.Parse(t[i - 1]);
 
                             //WRITE(21, 181)J,(ROOTDN(J, I),I = 1,NS)();
-                            generalOut.WriteLine($"     PLANT #{j} ROOT FRACTION: {string.Concat(Enumerable.Range(1, ns).Select(i => $"{_clayrs.Rootdn[j][i],5:F2}"))}");
+                            generalOut.WriteLine($"     PLANT #{j} ROOT FRACTION: {string.Concat(Enumerable.Range(1, _ns).Select(i => $"{_clayrs.Rootdn[j][i],5:F2}"))}");
                         }
                     }
 
                     //           INITIALIZE PLANT HEIGHT, WEIGHT, LAI, AND ROOTS
-                    for (var j = 1; j <= nplant; ++j)
+                    for (var j = 1; j <= _nplant; ++j)
                     {
-                        plthgt[j] = 0.0;
-                        pltwgt[j] = 0.0;
-                        pltlai[j] = 0.0;
+                        _plthgt[j] = 0.0;
+                        _pltwgt[j] = 0.0;
+                        _pltlai[j] = 0.0;
                         _clayrs.Totrot[j] = 0.0;
                         //              CONVERT LEAF DIMENSION FROM CM TO METERS
-                        dchar[j] = dchar[j] / 100.0;
+                        _dchar[j] = _dchar[j] / 100.0;
                         for (var i = nc; i >= 1; --i)
                         {
-                            if (_clayrs.Canlai[j][i] > 0.0) plthgt[j] = zc[nc + 1] - zc[i];
-                            pltwgt[j] = pltwgt[j] + _clayrs.Drycan[j][i];
-                            pltlai[j] = pltlai[j] + _clayrs.Canlai[j][i];
+                            if (_clayrs.Canlai[j][i] > 0.0) _plthgt[j] = zc[nc + 1] - zc[i];
+                            _pltwgt[j] = _pltwgt[j] + _clayrs.Drycan[j][i];
+                            _pltlai[j] = _pltlai[j] + _clayrs.Canlai[j][i];
                         label1025:;
                         }
-                        _clayrs.Totlai[j] = pltlai[j];
-                        if (itype[j] != 0)
+                        _clayrs.Totlai[j] = _pltlai[j];
+                        if (_itype[j] != 0)
                         {
                             //                 TRANSPIRING PLANT -- CALCULATE TOTAL ROOT DENSITY
                             //                 (FRACTION OF ROOTS IN SOIL COLUMN)
-                            for (var i = 1; i <= ns; ++i)
+                            for (var i = 1; i <= _ns; ++i)
                             {
                                 _clayrs.Totrot[j] = _clayrs.Totrot[j] + _clayrs.Rootdn[j][i];
                             label1030:;
@@ -1175,13 +1413,13 @@ namespace Landis.Extension.ShawDamm
                             //                 CALC. EFFECTIVE LEAF CONDUCT. FOR EACH CANOPY LAYER
                             for (var i = 1; i <= nc; ++i)
                             {
-                                _clayrs.Rleaf[j][i] = rleaf0[j] * _clayrs.Canlai[j][i] / _clayrs.Totlai[j];
+                                _clayrs.Rleaf[j][i] = _rleaf0[j] * _clayrs.Canlai[j][i] / _clayrs.Totlai[j];
                             label1040:;
                             }
                             //                 CALC. EFFECTIVE ROOT CONDUC. FOR EACH SOIL LAYER
-                            for (var i = 1; i <= ns; ++i)
+                            for (var i = 1; i <= _ns; ++i)
                             {
-                                _clayrs.Rroot[j][i] = rroot0[j] * _clayrs.Rootdn[j][i] / _clayrs.Totrot[j];
+                                _clayrs.Rroot[j][i] = _rroot0[j] * _clayrs.Rootdn[j][i] / _clayrs.Totrot[j];
                             label1050:;
                             }
                         }
@@ -1194,30 +1432,30 @@ namespace Landis.Extension.ShawDamm
             // **** INPUT PROPERTIES FOR SNOWPACK
             //      NSP = 0  ---> SNOW IS NOT PRESENT, BUT IT MAY SNOW
             //double zmspcm;
-            t = ParseNextLine(InputFile.SiteDescriptionData);
+            //t = ParseNextLine(InputFile.SiteDescriptionData);
             if (iversion == 2)
             {
-                // READ (11,*) SNOTMP,ZMSPCM
-                snotmp = double.Parse(t[0]); _zmspcm = double.Parse(t[1]);
-                isnotmp = 1;
+                //// READ (11,*) SNOTMP,ZMSPCM
+                //snotmp = double.Parse(t[0]); //_zmspcm = double.Parse(t[1]);
+                //isnotmp = 1;
             }
             else
             {
                 // READ (11,*) ISNOTMP,SNOTMP,ZMSPCM
-                isnotmp = int.Parse(t[0]); snotmp = double.Parse(t[1]); _zmspcm = double.Parse(t[2]);
+                // isnotmp = int.Parse(t[0]); snotmp = double.Parse(t[1]); _zmspcm = double.Parse(t[2]);
             }
 
             zmsp = _zmspcm / 100.0;
             zhsp = 0.2 * zmsp;
             zhspcm = zhsp * 100.0;
 
-            var osnotmp = isnotmp == 1 ? " C AIR TEMPERATURE      " : " C WET BULB TEMPERATURE ";
+            var osnotmp = _isnotmp == 1 ? " C AIR TEMPERATURE      " : " C WET BULB TEMPERATURE ";
 
             generalOut.WriteLine();
             generalOut.WriteLine();
             generalOut.WriteLine(" SNOW PARAMETERS");
             generalOut.WriteLine();
-            generalOut.WriteLine($"     MAXIMUM TEMPERATURE FOR SNOWFALL :{snotmp,5:F2}{osnotmp}");
+            generalOut.WriteLine($"     MAXIMUM TEMPERATURE FOR SNOWFALL :{_snotmp,5:F2}{osnotmp}");
             generalOut.WriteLine($"     WIND-PROFILE PARAMETERS FOR SNOW: ZM ={_zmspcm,5:F2} CM    ZH ={zhspcm,5:F2} CM");
             generalOut.WriteLine($"     GRAIN-SIZE DIAMETER PARAMETERS :{Spprop.G1,5:F2}{Spprop.G2,6:F2}{Spprop.G3,8:F1}");
             generalOut.WriteLine($"     SOLAR RADIATION EXTINCTION COEFFICIENT PARAMETER :{Spprop.Extsp,6:F2}");
@@ -1229,10 +1467,10 @@ namespace Landis.Extension.ShawDamm
             generalOut.WriteLine($"     MAX AND MIN WATER HOLDING CAPACITY AND WHC DENSITY:{Spwatr.Plwmax,5:F2} M/M{Spwatr.Plwhc,7:F3} M/M{Spwatr.Plwden,8:F1} KG/M**3");
             generalOut.WriteLine($"     COMPACTION AND SETTLING PARAMETERS :{Metasp.Cmet1,5:F2}{Metasp.Cmet2,7:F1}{Metasp.Cmet3,7:F2}{Metasp.Cmet4,7:F2}{Metasp.Cmet5,7:F1}{Metasp.Snomax,8:F1}");
 
-            if (nsp > 0)
+            if (_nsp > 0)
             {
                 //        SNOWPACK IS PRESENT AT THE START OF THE SIMULATION
-                for (var i = 1; i <= nsp; ++i)
+                for (var i = 1; i <= _nsp; ++i)
                 {
                     // READ (11,*) DZSP(I),TSPDT(I),DLWDT(I),RHOSP(I)
                     t = ParseNextLine(InputFile.SiteDescriptionData);
@@ -1243,17 +1481,17 @@ namespace Landis.Extension.ShawDamm
                 }
                 zsp[1] = 0.0;
                 tdepth = dzsp[1];
-                for (var i = 2; i <= nsp; ++i)
+                for (var i = 2; i <= _nsp; ++i)
                 {
                     zsp[i] = tdepth + dzsp[i] / 2.0;
                     tdepth = tdepth + dzsp[i];
                 label10:;
                 }
-                zsp[nsp + 1] = tdepth;
+                zsp[_nsp + 1] = tdepth;
             }
 
             // **** INPUT PROPERTIES FOR RESIDUE LAYERS
-            if (nr > 0)
+            if (_nr > 0)
             {
                 //         DETERMINE MAXIMUM WATER CONTENT OF RESIDUE (AT 99.9% RH)
                 var hum999 = 0.999;
@@ -1262,25 +1500,35 @@ namespace Landis.Extension.ShawDamm
 
                 if (iversion == 2)
                 {
-                    // read(11,*)cover,albres,rload,zrthik,gmcdt(1),rescof
-                    t = ParseNextLine(InputFile.SiteDescriptionData);
-                    cover = double.Parse(t[0]); albres = double.Parse(t[1]); rload = double.Parse(t[2]); zrthik = double.Parse(t[3]); gmcdt[1] = double.Parse(t[4]); rescof = double.Parse(t[5]);
+                    //// read(11,*)cover,albres,rload,zrthik,gmcdt(1),rescof
+                    //t = ParseNextLine(InputFile.SiteDescriptionData);
+                    //cover = double.Parse(t[0]); albres = double.Parse(t[1]); rload = double.Parse(t[2]); zrthik = double.Parse(t[3]); gmcdt[1] = double.Parse(t[4]); rescof = double.Parse(t[5]);
 
-                    nrchang = 0;
-                    restkb = 4.0;
+                    //nrchang = 0;
+                    //restkb = 4.0;
                 }
                 else
                 {
                     // read(11,*)nrchang,gmcdt(1)
-                    t = ParseNextLine(InputFile.SiteDescriptionData);
-                    nrchang = int.Parse(t[0]); gmcdt[1] = double.Parse(t[1]);
+                    //t = ParseNextLine(InputFile.SiteDescriptionData);
+                    //nrchang = int.Parse(t[0]); gmcdt[1] = double.Parse(t[1]);
+                    nrchang = 0; gmcdt[1] = 0.0;
 
                     if (nrchang == 0)
                     {
                         //              RESIDUE DOES NOT CHANGE DURING SIMULATION
                         // read(11,*)zrthik,rload,cover,albres,rescof,restkb
-                        t = ParseNextLine(InputFile.SiteDescriptionData);
-                        zrthik = double.Parse(t[0]); rload = double.Parse(t[1]); cover = double.Parse(t[2]); albres = double.Parse(t[3]); rescof = double.Parse(t[4]); restkb = double.Parse(t[5]);
+                        //t = ParseNextLine(InputFile.SiteDescriptionData);
+                        //zrthik = double.Parse(t[0]); rload = double.Parse(t[1]); cover = double.Parse(t[2]); // albres = double.Parse(t[3]); rescof = double.Parse(t[4]); restkb = double.Parse(t[5]);
+
+                        if (!SimpleFileParser.TryParseInput("LitterThickness", thuFileData["LitterThickness"], out _zrthik, out errorMessage, 0.0))
+                            return false;
+
+                        if (!SimpleFileParser.TryParseInput("LitterDryWeight", thuFileData["LitterDryWeight"], out _rload, out errorMessage, 0.0))
+                            return false;
+
+                        if (!SimpleFileParser.TryParseInput("FractionGroundCoveredLitter", thuFileData["FractionGroundCoveredLitter"], out _cover, out errorMessage, 0.0, 1.0))
+                            return false;
                     }
                 }
 
@@ -1291,21 +1539,21 @@ namespace Landis.Extension.ShawDamm
                     generalOut.WriteLine();
                     generalOut.WriteLine(" RESIDUE PARAMETERS");
                     generalOut.WriteLine();
-                    generalOut.WriteLine($"     THICKNESS OF RESIDUE LAYER :{zrthik,5:F2} CM");
-                    generalOut.WriteLine($"     RESIDUE LOADING :{rload,7:F0} KG/HA");
-                    generalOut.WriteLine($"     FRACTION OF GROUND COVERED BY RESIDUE :{cover,5:F2}");
-                    generalOut.WriteLine($"     ALBEDO OF RESIDUE :{albres,5:F2}");
-                    generalOut.WriteLine($"     VAPOR TRANSFER RESISTANCE FROM RESIDUE :{rescof,7:F0}");
-                    generalOut.WriteLine($"     WIND COEFFICIENT FOR THERMAL CONVECTION :{restkb,6:F2}");
+                    generalOut.WriteLine($"     THICKNESS OF RESIDUE LAYER :{_zrthik,5:F2} CM");
+                    generalOut.WriteLine($"     RESIDUE LOADING :{_rload,7:F0} KG/HA");
+                    generalOut.WriteLine($"     FRACTION OF GROUND COVERED BY RESIDUE :{_cover,5:F2}");
+                    generalOut.WriteLine($"     ALBEDO OF RESIDUE :{_albres,5:F2}");
+                    generalOut.WriteLine($"     VAPOR TRANSFER RESISTANCE FROM RESIDUE :{_rescof,7:F0}");
+                    generalOut.WriteLine($"     WIND COEFFICIENT FOR THERMAL CONVECTION :{_restkb,6:F2}");
                     generalOut.WriteLine($"     TEMPERATURE COEFF. FOR THERMAL CONVECTION :{Rsparm.Restka,6:F3}");
                     generalOut.WriteLine($"     EMISSIVITY OF RESIDUE :{Lwrcof.Emitr,5:F2}");
                     generalOut.WriteLine($"     MOISTURE PARAMETERS FOR RESIDUE :{Rsparm.Resma,7:F2}{Rsparm.Resmb,5:F2}");
                     generalOut.WriteLine($"     MAXIMUM MOISTURE CONTENT FOR RESIDUE :{gmcmax,5:F2} KG/KG");
 
                     //           CONVERT RLOAD FROM KG/HA TO KG/M2
-                    rload = rload / 10000.0;
+                    _rload = _rload / 10000.0;
                     //           CONVERT ZRTHIK FROM CM TO M
-                    zrthik = zrthik / 100.0;
+                    _zrthik = _zrthik / 100.0;
                 }
                 else
                 {
@@ -1343,7 +1591,7 @@ namespace Landis.Extension.ShawDamm
             {
                 //         SET RESIDUE TO NEVER CHANGE
                 nrchang = 0;
-                zrthik = 0.0;
+                _zrthik = 0.0;
             }
 
             //**** INPUT PROPERTIES AND INITIAL CONDITIONS FOR EACH TYPE OF SOLUTE
@@ -1361,12 +1609,12 @@ namespace Landis.Extension.ShawDamm
 
                 // read(11,*)(saltkq(i,j),j=1,ns)
                 t = ParseNextLine(InputFile.SiteDescriptionData);
-                for (var j = 1; j <= ns; ++j)
+                for (var j = 1; j <= _ns; ++j)
                     _slparm.Saltkq[i][j] = double.Parse(t[j - 1]);
 
                 // read(11,*)(saltdt(i,j),j=1,ns)
                 t = ParseNextLine(InputFile.SiteDescriptionData);
-                for (var j = 1; j <= ns; ++j)
+                for (var j = 1; j <= _ns; ++j)
                     saltdt[i][j] = double.Parse(t[j - 1]);
 
                 // write(21,140)i,sltdif(i),haflif
@@ -1377,15 +1625,14 @@ namespace Landis.Extension.ShawDamm
                 generalOut.WriteLine("     SOIL MATRIX-SOIL SOLUTION PARTITIONING COEEF (Kd) FOR EACH SOIL NODE:");
 
                 // write(21,145)(saltkq(i,j),j=1,ns)
-                if (ns > 15)
+                if (_ns > 15)
                 {
                     generalOut.WriteLine($"     {string.Concat(Enumerable.Range(1, 15).Select(j => $"{_slparm.Saltkq[i][j],7:F2}"))}");
-                    generalOut.WriteLine($"     {string.Concat(Enumerable.Range(16, ns).Select(j => $"{_slparm.Saltkq[i][j],7:F2}"))}");
-
+                    generalOut.WriteLine($"     {string.Concat(Enumerable.Range(16, _ns).Select(j => $"{_slparm.Saltkq[i][j],7:F2}"))}");
                 }
                 else
                 {
-                    generalOut.WriteLine($"     {string.Concat(Enumerable.Range(1, ns).Select(j => $"{_slparm.Saltkq[i][j],7:F2}"))}");
+                    generalOut.WriteLine($"     {string.Concat(Enumerable.Range(1, _ns).Select(j => $"{_slparm.Saltkq[i][j],7:F2}"))}");
                 }
 
                 //        CALCULATE EXPONENT FOR DEGRADATION BASED ON HALF LIFE
@@ -1401,41 +1648,40 @@ namespace Landis.Extension.ShawDamm
             label30:;
             }
 
-
             // line 2407
 
             // **** INPUT PROPERTIES FOR SOIL LAYERS
-            t = ParseNextLine(InputFile.SiteDescriptionData);
+            //t = ParseNextLine(InputFile.SiteDescriptionData);
             if (iversion == 2)
             {
-                // read(11,*)ivlcbc,itmpbc,albdry,albexp
-                ivlcbc = int.Parse(t[0]); itmpbc = int.Parse(t[1]); albdry = double.Parse(t[2]); albexp = double.Parse(t[3]);
+                //// read(11,*)ivlcbc,itmpbc,albdry,albexp
+                //ivlcbc = int.Parse(t[0]); itmpbc = int.Parse(t[1]); albdry = double.Parse(t[2]); albexp = double.Parse(t[3]);
 
-                Slparm.Iwrc = 1;
+                //Slparm.Iwrc = 1;
 
-                if (itmpbc == 1)
-                {
-                    Console.WriteLine(" Enter the average soil temperature at depth: ");
-                    if (!double.TryParse(Console.ReadLine(), out tsavg))
-                    {
-                        Console.WriteLine();
-                        Console.WriteLine(" Invalid input");
-                        return false;
-                    }
-                }
+                //if (itmpbc == 1)
+                //{
+                //    Console.WriteLine(" Enter the average soil temperature at depth: ");
+                //    if (!double.TryParse(Console.ReadLine(), out tsavg))
+                //    {
+                //        Console.WriteLine();
+                //        Console.WriteLine(" Invalid input");
+                //        return false;
+                //    }
+                //}
             }
             else
             {
                 // read(11,*)ivlcbc,itmpbc,albdry,albexp,iwrc
-                ivlcbc = int.Parse(t[0]); itmpbc = int.Parse(t[1]); albdry = double.Parse(t[2]); albexp = double.Parse(t[3]); Slparm.Iwrc = int.Parse(t[4]);
+                //ivlcbc = int.Parse(t[0]); itmpbc = int.Parse(t[1]);  albdry = double.Parse(t[2]); albexp = double.Parse(t[3]); // Slparm.Iwrc = int.Parse(t[4]);
 
                 //         READ AVERAGE ANNUAL SOIL TEMPERATURE IF LOWER SOIL TEMPERATURE
                 //         IS ESTIMATED BY THE MODEL
 
-                // John McNabb: don't read tsavg from the site file, rather it is passed to Shaw. simply skip over the line in the site file.
-                if (itmpbc == 1)
-                    // read(11, *)tsavg;
-                    double.Parse(ReadNextLine(InputFile.SiteDescriptionData));
+                //// John McNabb: don't read tsavg from the site file, rather it is passed to Shaw. simply skip over the line in the site file.
+                //if (_itmpbc == 1)
+                //    // read(11, *)tsavg;
+                //    double.Parse(ReadNextLine(InputFile.SiteDescriptionData));
                 //tsavg = double.Parse(ReadNextLine(InputFile.SiteDescriptionData));
             }
 
@@ -1444,7 +1690,7 @@ namespace Landis.Extension.ShawDamm
             generalOut.WriteLine();
             generalOut.WriteLine(" SOIL PROPERTIES");
 
-            if (ivlcbc <= 0)
+            if (_ivlcbc <= 0)
             {
                 // write(21,151)
                 generalOut.WriteLine();
@@ -1456,16 +1702,16 @@ namespace Landis.Extension.ShawDamm
                 generalOut.WriteLine();
                 generalOut.WriteLine("     UNIT GRADIENT SPECIFIED FOR LOWER BOUNDARY OF WATER FLUX");
             }
-            if (itmpbc <= 0)
+            if (_itmpbc <= 0)
             {
                 // write(21,153)
                 generalOut.WriteLine("     INPUT SOIL TEMPERATURE SPECIFIED FOR LOWER BOUNDARY");
             }
-            else if (itmpbc == 1)
+            else if (_itmpbc == 1)
             {
                 // write(21,154)tsavg
                 generalOut.WriteLine("     SOIL TEMPERATURE AT LOWER BOUNDARY ESTIMATED BY MODEL");
-                generalOut.WriteLine($"          ASSUMING AVERAGE ANNUAL SOIL TEMPERATURE OF{tsavg,5:F1}C");
+                generalOut.WriteLine($"          ASSUMING AVERAGE ANNUAL SOIL TEMPERATURE OF{_tsavg,5:F1}C");
             }
             else
             {
@@ -1473,10 +1719,9 @@ namespace Landis.Extension.ShawDamm
                 generalOut.WriteLine("     ZERO HEAT FLUX ASSUMED AT LOWER BOUNDARY");
             }
 
-
             // write(21,155)albdry,albexp,emits
             generalOut.WriteLine();
-            generalOut.WriteLine($"     ALBEDO OF DRY SOIL AND MOISTURE-DEPENDENCE EXPONENT :{albdry,5:F2}{albexp,7:F2}");
+            generalOut.WriteLine($"     ALBEDO OF DRY SOIL AND MOISTURE-DEPENDENCE EXPONENT :{_albdry,5:F2}{_albexp,7:F2}");
             generalOut.WriteLine($"     EMISSIVITY OF SOIL:{Lwrcof.Emits,5:F2}");
 
             if (_slparm.Nsalt == 0)
@@ -1559,9 +1804,123 @@ namespace Landis.Extension.ShawDamm
                 nwrc = 4;
             }
 
-            for (var i = 1; i <= ns; ++i)
+            // set soil inputs
+            jj = 1;
+            _ns = 0;
+
+            //if (!SimpleFileParser.TryParseInput("SurfaceWaterContent", thuFileData["SurfaceWaterContent"], out double previousWaterContentAtMaxDepth, out errorMessage, 0.0))
+            //    return false;
+
+            var previousMaxDepth = 0.0;
+            while (true)
             {
-                t = ParseNextLine(InputFile.SiteDescriptionData);
+                var key = $"ShawSoilType{jj}";
+                if (!thuFileData.TryGetValue(key, out var soilType) || string.IsNullOrEmpty(soilType))
+                    break;
+
+                if (!soilFileData.TryGetValue(soilType, out var soilData))
+                {
+                    errorMessage = $"Soil data for {key} '{soilType}' not found";
+                    return false;
+                }
+
+
+                if (!SimpleFileParser.TryParseInput($"MaxDepth{jj}", thuFileData[$"MaxDepth{jj}"], out double maxDepth, out errorMessage, 0.0))
+                    return false;
+
+                if (!SimpleFileParser.TryParseInput($"Nodes{jj}", thuFileData[$"Nodes{jj}"], out int nodeCount, out errorMessage, 0))
+                    return false;
+
+                //if (!SimpleFileParser.TryParseInput($"WaterContentAtMaxDepth{jj}", thuFileData[$"WaterContentAtMaxDepth{jj}"], out double waterContentAtMaxDepth, out errorMessage, 0.0))
+                //    return false;
+
+                if (!SimpleFileParser.TryParseInput($"InitWaterContent{jj}", thuFileData[$"InitWaterContent{jj}"], out double initWaterContent, out errorMessage, 0.0))
+                    return false;
+
+                var step = (maxDepth - previousMaxDepth) / nodeCount;
+                //var waterStep = (waterContentAtMaxDepth - previousWaterContentAtMaxDepth) / nodeCount;
+
+                // if this is the first layer, then start with a node at zero depth
+                for (var i = (jj == 1 ? 0 : 1); i <= nodeCount; ++i)
+                {
+                    ++_ns;
+                    zs[_ns] = previousMaxDepth + step * i;
+                    _vlcdt[_ns] = initWaterContent;
+                    //_vlcdt[_ns] = previousWaterContentAtMaxDepth + waterStep * i;
+
+                    if (!SimpleFileParser.TryParseInput("Sand", soilData["Sand"], out _slparm.Sand[_ns], out errorMessage, 0.0, 100.0))
+                        return false;
+
+                    if (!SimpleFileParser.TryParseInput("Silt", soilData["Silt"], out _slparm.Silt[_ns], out errorMessage, 0.0, 100.0))
+                        return false;
+
+                    if (!SimpleFileParser.TryParseInput("Clay", soilData["Clay"], out _slparm.Clay[_ns], out errorMessage, 0.0, 100.0))
+                        return false;
+
+                    if (!SimpleFileParser.TryParseInput("Rock", soilData["Rock"], out _slparm.Rock[_ns], out errorMessage, 0.0, 100.0))
+                        return false;
+
+                    if (!SimpleFileParser.TryParseInput("Organic", soilData["Organic"], out _slparm.Om[_ns], out errorMessage, 0.0, 100.0))
+                        return false;
+
+                    if (!SimpleFileParser.TryParseInput("BulkDensity", soilData["BulkDensity"], out _slparm.Rhob[_ns], out errorMessage, 0.0))
+                        return false;
+
+                    if (!SimpleFileParser.TryParseInput("Ksat", soilData["Ksat"], out satcon, out errorMessage, 0.0))
+                        return false;
+
+                    if (!SimpleFileParser.TryParseInput("KsatLateral", soilData["KsatLateral"], out satkl, out errorMessage, 0.0))
+                        return false;
+
+                    //         CONVERT CONDUCTIVITY FROM CM/HR TO M/SEC
+                    _slparm.Satk[_ns] = satcon / 360000.0;
+                    _slparm.Satklat[_ns] = satkl / 360000.0;
+
+                    if (!SimpleFileParser.TryParseInput("AirEntry", soilData["AirEntry"], out _slparm.Soilwrc[_ns][1], out errorMessage))
+                        return false;
+
+                    if (!SimpleFileParser.TryParseInput("ThetaSat", soilData["ThetaSat"], out _slparm.Soilwrc[_ns][2], out errorMessage))
+                        return false;
+
+                    if (Slparm.Iwrc == 1)
+                        if (!SimpleFileParser.TryParseInput("Campbells", soilData["Campbells"], out _slparm.Soilwrc[_ns][3], out errorMessage))
+                            return false;
+
+                    if (Slparm.Iwrc == 2)
+                        if (!SimpleFileParser.TryParseInput("BrooksCoreyPoreSize", soilData["BrooksCoreyPoreSize"], out _slparm.Soilwrc[_ns][3], out errorMessage))
+                            return false;
+
+                    if (Slparm.Iwrc == 2 || Slparm.Iwrc == 3)
+                        if (!SimpleFileParser.TryParseInput("ThetaResidual", soilData["ThetaResidual"], out _slparm.Soilwrc[_ns][4], out errorMessage))
+                            return false;
+
+                    if (Slparm.Iwrc == 2)
+                        if (!SimpleFileParser.TryParseInput("BrooksCoreyPoreConnectivity", soilData["BrooksCoreyPoreConnectivity"], out _slparm.Soilwrc[_ns][5], out errorMessage))
+                            return false;
+
+                    if (Slparm.Iwrc == 3)
+                        if (!SimpleFileParser.TryParseInput("nVanGenuchten", soilData["nVanGenuchten"], out _slparm.Soilwrc[_ns][3], out errorMessage))
+                            return false;
+
+                    if (Slparm.Iwrc == 3)
+                        if (!SimpleFileParser.TryParseInput("vanGenuchtenPoreConnectivity", soilData["vanGenuchtenPoreConnectivity"], out _slparm.Soilwrc[_ns][5], out errorMessage))
+                            return false;
+
+                    if (Slparm.Iwrc == 3)
+                        if (!SimpleFileParser.TryParseInput("alphaVanGenuchten", soilData["alphaVanGenuchten"], out _slparm.Soilwrc[_ns][6], out errorMessage))
+                            return false;
+
+                }
+
+                previousMaxDepth = maxDepth;
+                //previousWaterContentAtMaxDepth = initWaterContent;
+
+                ++jj;
+            }
+
+            for (var i = 1; i <= _ns; ++i)
+            {
+                //t = ParseNextLine(InputFile.SiteDescriptionData);
                 if (iversion == 2)
                 {
                     if (_slparm.Nsalt == 0)
@@ -1582,9 +1941,9 @@ namespace Landis.Extension.ShawDamm
                     if (_slparm.Nsalt == 0)
                     {
                         // read(11,*)zs(i),sand(i),silt(i),clay(i),rock(i),om(i),rhob(i),satcon,satkl,(soilwrc(i,j),j=1,nwrc)
-                        zs[i] = double.Parse(t[0]); _slparm.Sand[i] = double.Parse(t[1]); _slparm.Silt[i] = double.Parse(t[2]); _slparm.Clay[i] = double.Parse(t[3]); _slparm.Rock[i] = double.Parse(t[4]); _slparm.Om[i] = double.Parse(t[5]); _slparm.Rhob[i] = double.Parse(t[6]); satcon = double.Parse(t[7]); satkl = double.Parse(t[8]);
-                        for (var j = 1; j <= nwrc; ++j)
-                            _slparm.Soilwrc[i][j] = double.Parse(t[8 + j]);
+                        //zs[i] = double.Parse(t[0]); _slparm.Sand[i] = double.Parse(t[1]); _slparm.Silt[i] = double.Parse(t[2]); _slparm.Clay[i] = double.Parse(t[3]); _slparm.Rock[i] = double.Parse(t[4]); _slparm.Om[i] = double.Parse(t[5]); _slparm.Rhob[i] = double.Parse(t[6]); satcon = double.Parse(t[7]); satkl = double.Parse(t[8]);
+                        //for (var j = 1; j <= nwrc; ++j)
+                        //    _slparm.Soilwrc[i][j] = double.Parse(t[8 + j]);
                     }
                     else
                     {
@@ -1611,33 +1970,34 @@ namespace Landis.Extension.ShawDamm
 
                 //         CHECK IF SATURATION VALUE IS NOT TOO HIGH FOR DENSITY
                 //         (ADJUST SPECIFIC DENSITY FOR ORGANIC MATTER)
-                if (_slparm.Soilwrc[i][2] > 1.0 - _slparm.Rhob[i] * ((1.0 - _slparm.Om[i]) / Constn.Rhom + _slparm.Om[i] / Constn.Rhoom)) _slparm.Soilwrc[i][2] = 1.0 - _slparm.Rhob[i] * ((1.0 - _slparm.Om[i]) / Constn.Rhom + _slparm.Om[i] / Constn.Rhoom);
+                if (_slparm.Soilwrc[i][2] > 1.0 - _slparm.Rhob[i] * ((1.0 - _slparm.Om[i]) / Constn.Rhom + _slparm.Om[i] / Constn.Rhoom))
+                    _slparm.Soilwrc[i][2] = 1.0 - _slparm.Rhob[i] * ((1.0 - _slparm.Om[i]) / Constn.Rhom + _slparm.Om[i] / Constn.Rhoom);
 
-                //         CONVERT CONDUCTIVITY FROM CM/HR TO M/SEC
-                _slparm.Satk[i] = satcon / 360000.0;
-                _slparm.Satklat[i] = satkl / 360000.0;
+                ////         CONVERT CONDUCTIVITY FROM CM/HR TO M/SEC
+                //_slparm.Satk[i] = satcon / 360000.0;
+                //_slparm.Satklat[i] = satkl / 360000.0;
 
                 if (_slparm.Nsalt == 0)
                 {
                     if (Slparm.Iwrc == 1)
                     {
                         // write(21,1158)zs(i),sand(i)*100.0,silt(i)*100.0,clay(i)*100.0,rock(i)*100.0,om(i)*100.0,rhob(i),satcon,satkl,(soilwrc(i,j),j=1,nwrc)
-                        generalOut.WriteLine($"    {zs[i],6:F3}{_slparm.Sand[i] * 100.0,7:F1}{_slparm.Silt[i] * 100.0,7:F1}{_slparm.Clay[i] * 100.0,7:F1}{_slparm.Rock[i] * 100.0,7:F1}{_slparm.Om[i] * 100.0,7:F1}{_slparm.Rhob[i],9:F0} {satcon,9:F3}{satkl,9:F3}{_slparm.Soilwrc[i][1],9:F2}{_slparm.Soilwrc[i][2],11:F3}{_slparm.Soilwrc[i][3],10:F3}");
+                        generalOut.WriteLine($"    {zs[i],6:F3}{_slparm.Sand[i] * 100.0,7:F1}{_slparm.Silt[i] * 100.0,7:F1}{_slparm.Clay[i] * 100.0,7:F1}{_slparm.Rock[i] * 100.0,7:F1}{_slparm.Om[i] * 100.0,7:F1}{_slparm.Rhob[i],9:F0} {_slparm.Satk[i] * 360000.0,9:F3}{_slparm.Satklat[i] * 360000.0,9:F3}{_slparm.Soilwrc[i][1],9:F2}{_slparm.Soilwrc[i][2],11:F3}{_slparm.Soilwrc[i][3],10:F3}");
                     }
                     else if (Slparm.Iwrc == 2)
                     {
                         // write(21,2158)zs(i),sand(i)*100.0,silt(i)*100.0,clay(i)*100.0,rock(i)*100.0,om(i)*100.0,rhob(i),satcon,satkl,(soilwrc(i,j),j=1,nwrc)
-                        generalOut.WriteLine($"    {zs[i],6:F3}{_slparm.Sand[i] * 100.0,7:F1}{_slparm.Silt[i] * 100.0,7:F1}{_slparm.Clay[i] * 100.0,7:F1}{_slparm.Rock[i] * 100.0,7:F1}{_slparm.Om[i] * 100.0,7:F1}{_slparm.Rhob[i],9:F0} {satcon,9:F3}{satkl,9:F3}{_slparm.Soilwrc[i][1],9:F2}{_slparm.Soilwrc[i][2],11:F3}{_slparm.Soilwrc[i][3],10:F3}{_slparm.Soilwrc[i][4],10:F3}");
+                        generalOut.WriteLine($"    {zs[i],6:F3}{_slparm.Sand[i] * 100.0,7:F1}{_slparm.Silt[i] * 100.0,7:F1}{_slparm.Clay[i] * 100.0,7:F1}{_slparm.Rock[i] * 100.0,7:F1}{_slparm.Om[i] * 100.0,7:F1}{_slparm.Rhob[i],9:F0} {_slparm.Satk[i] * 360000.0,9:F3}{_slparm.Satklat[i] * 360000.0,9:F3}{_slparm.Soilwrc[i][1],9:F2}{_slparm.Soilwrc[i][2],11:F3}{_slparm.Soilwrc[i][3],10:F3}{_slparm.Soilwrc[i][4],10:F3}");
                     }
                     else if (Slparm.Iwrc == 3)
                     {
                         // write(21,3158)zs(i),sand(i)*100.0,silt(i)*100.0,clay(i)*100.0,rock(i)*100.0,om(i)*100.0,rhob(i),satcon,satkl,(soilwrc(i,j),j=1,nwrc)
-                        generalOut.WriteLine($"    {zs[i],6:F3}{_slparm.Sand[i] * 100.0,7:F1}{_slparm.Silt[i] * 100.0,7:F1}{_slparm.Clay[i] * 100.0,7:F1}{_slparm.Rock[i] * 100.0,7:F1}{_slparm.Om[i] * 100.0,7:F1}{_slparm.Rhob[i],9:F0} {satcon,9:F3}{satkl,9:F3}{_slparm.Soilwrc[i][1],9:F2}{_slparm.Soilwrc[i][2],11:F3}{_slparm.Soilwrc[i][3],10:F3}{_slparm.Soilwrc[i][4],10:F3}{_slparm.Soilwrc[i][5],9:F2}");
+                        generalOut.WriteLine($"    {zs[i],6:F3}{_slparm.Sand[i] * 100.0,7:F1}{_slparm.Silt[i] * 100.0,7:F1}{_slparm.Clay[i] * 100.0,7:F1}{_slparm.Rock[i] * 100.0,7:F1}{_slparm.Om[i] * 100.0,7:F1}{_slparm.Rhob[i],9:F0} {_slparm.Satk[i] * 360000.0,9:F3}{_slparm.Satklat[i] * 360000.0,9:F3}{_slparm.Soilwrc[i][1],9:F2}{_slparm.Soilwrc[i][2],11:F3}{_slparm.Soilwrc[i][3],10:F3}{_slparm.Soilwrc[i][4],10:F3}{_slparm.Soilwrc[i][5],9:F2}");
                     }
                     else
                     {
                         // write(21,4158)zs(i),sand(i)*100.0,silt(i)*100.0,clay(i)*100.0,rock(i)*100.0,om(i)*100.0,rhob(i),satcon,satkl,(soilwrc(i,j),j=1,nwrc)
-                        generalOut.WriteLine($"    {zs[i],6:F3}{_slparm.Sand[i] * 100.0,7:F1}{_slparm.Silt[i] * 100.0,7:F1}{_slparm.Clay[i] * 100.0,7:F1}{_slparm.Rock[i] * 100.0,7:F1}{_slparm.Om[i] * 100.0,7:F1}{_slparm.Rhob[i],9:F0} {satcon,9:F3}{satkl,9:F3}{_slparm.Soilwrc[i][1],9:F2}{_slparm.Soilwrc[i][2],11:F3}{_slparm.Soilwrc[i][3],10:F3}");
+                        generalOut.WriteLine($"    {zs[i],6:F3}{_slparm.Sand[i] * 100.0,7:F1}{_slparm.Silt[i] * 100.0,7:F1}{_slparm.Clay[i] * 100.0,7:F1}{_slparm.Rock[i] * 100.0,7:F1}{_slparm.Om[i] * 100.0,7:F1}{_slparm.Rhob[i],9:F0} {_slparm.Satk[i] * 360000.0,9:F3}{_slparm.Satklat[i] * 360000.0,9:F3}{_slparm.Soilwrc[i][1],9:F2}{_slparm.Soilwrc[i][2],11:F3}{_slparm.Soilwrc[i][3],10:F3}");
                     }
                 }
                 else
@@ -1645,22 +2005,22 @@ namespace Landis.Extension.ShawDamm
                     if (Slparm.Iwrc == 1)
                     {
                         // write(21,1158)zs(i),sand(i)*100.0,silt(i)*100.0,clay(i)*100.0,rock(i)*100.0,om(i)*100.0,rhob(i),satcon,satkl,(soilwrc(i,j),j=1,nwrc),asalt(i),disper(i)
-                        generalOut.WriteLine($"    {zs[i],6:F3}{_slparm.Sand[i] * 100.0,7:F1}{_slparm.Silt[i] * 100.0,7:F1}{_slparm.Clay[i] * 100.0,7:F1}{_slparm.Rock[i] * 100.0,7:F1}{_slparm.Om[i] * 100.0,7:F1}{_slparm.Rhob[i],9:F0} {satcon,9:F3}{satkl,9:F3}{_slparm.Soilwrc[i][1],9:F2}{_slparm.Soilwrc[i][2],11:F3}{_slparm.Soilwrc[i][3],10:F3}    {asalt[i],6:F1}{disper[i],8:F3}");
+                        generalOut.WriteLine($"    {zs[i],6:F3}{_slparm.Sand[i] * 100.0,7:F1}{_slparm.Silt[i] * 100.0,7:F1}{_slparm.Clay[i] * 100.0,7:F1}{_slparm.Rock[i] * 100.0,7:F1}{_slparm.Om[i] * 100.0,7:F1}{_slparm.Rhob[i],9:F0} {_slparm.Satk[i] * 360000.0,9:F3}{_slparm.Satklat[i] * 360000.0,9:F3}{_slparm.Soilwrc[i][1],9:F2}{_slparm.Soilwrc[i][2],11:F3}{_slparm.Soilwrc[i][3],10:F3}    {asalt[i],6:F1}{disper[i],8:F3}");
                     }
                     else if (Slparm.Iwrc == 2)
                     {
                         // write(21,2158)zs(i),sand(i)*100.0,silt(i)*100.0,clay(i)*100.0,rock(i)*100.0,om(i)*100.0,rhob(i),satcon,satkl,(soilwrc(i,j),j=1,nwrc),asalt(i),disper(i)
-                        generalOut.WriteLine($"    {zs[i],6:F3}{_slparm.Sand[i] * 100.0,7:F1}{_slparm.Silt[i] * 100.0,7:F1}{_slparm.Clay[i] * 100.0,7:F1}{_slparm.Rock[i] * 100.0,7:F1}{_slparm.Om[i] * 100.0,7:F1}{_slparm.Rhob[i],9:F0} {satcon,9:F3}{satkl,9:F3}{_slparm.Soilwrc[i][1],9:F2}{_slparm.Soilwrc[i][2],11:F3}{_slparm.Soilwrc[i][3],10:F3}{_slparm.Soilwrc[i][4],10:F3}    {asalt[i],6:F1}{disper[i],8:F3}");
+                        generalOut.WriteLine($"    {zs[i],6:F3}{_slparm.Sand[i] * 100.0,7:F1}{_slparm.Silt[i] * 100.0,7:F1}{_slparm.Clay[i] * 100.0,7:F1}{_slparm.Rock[i] * 100.0,7:F1}{_slparm.Om[i] * 100.0,7:F1}{_slparm.Rhob[i],9:F0} {_slparm.Satk[i] * 360000.0,9:F3}{_slparm.Satklat[i] * 360000.0,9:F3}{_slparm.Soilwrc[i][1],9:F2}{_slparm.Soilwrc[i][2],11:F3}{_slparm.Soilwrc[i][3],10:F3}{_slparm.Soilwrc[i][4],10:F3}    {asalt[i],6:F1}{disper[i],8:F3}");
                     }
                     else if (Slparm.Iwrc == 3)
                     {
                         // write(21,3158)zs(i),sand(i)*100.0,silt(i)*100.0,clay(i)*100.0,rock(i)*100.0,om(i)*100.0,rhob(i),satcon,satkl,(soilwrc(i,j),j=1,nwrc),asalt(i),disper(i)
-                        generalOut.WriteLine($"    {zs[i],6:F3}{_slparm.Sand[i] * 100.0,7:F1}{_slparm.Silt[i] * 100.0,7:F1}{_slparm.Clay[i] * 100.0,7:F1}{_slparm.Rock[i] * 100.0,7:F1}{_slparm.Om[i] * 100.0,7:F1}{_slparm.Rhob[i],9:F0} {satcon,9:F3}{satkl,9:F3}{_slparm.Soilwrc[i][1],9:F2}{_slparm.Soilwrc[i][2],11:F3}{_slparm.Soilwrc[i][3],10:F3}{_slparm.Soilwrc[i][4],10:F3}{_slparm.Soilwrc[i][5],9:F2}   {asalt[i],6:F1}{disper[i],8:F3}");
+                        generalOut.WriteLine($"    {zs[i],6:F3}{_slparm.Sand[i] * 100.0,7:F1}{_slparm.Silt[i] * 100.0,7:F1}{_slparm.Clay[i] * 100.0,7:F1}{_slparm.Rock[i] * 100.0,7:F1}{_slparm.Om[i] * 100.0,7:F1}{_slparm.Rhob[i],9:F0} {_slparm.Satk[i] * 360000.0,9:F3}{_slparm.Satklat[i] * 360000.0,9:F3}{_slparm.Soilwrc[i][1],9:F2}{_slparm.Soilwrc[i][2],11:F3}{_slparm.Soilwrc[i][3],10:F3}{_slparm.Soilwrc[i][4],10:F3}{_slparm.Soilwrc[i][5],9:F2}   {asalt[i],6:F1}{disper[i],8:F3}");
                     }
                     else
                     {
                         // write(21,4158)zs(i),sand(i)*100.0,silt(i)*100.0,clay(i)*100.0,rock(i)*100.0,om(i)*100.0,rhob(i),satcon,satkl,(soilwrc(i,j),j=1,nwrc),asalt(i),disper(i)
-                        generalOut.WriteLine($"    {zs[i],6:F3}{_slparm.Sand[i] * 100.0,7:F1}{_slparm.Silt[i] * 100.0,7:F1}{_slparm.Clay[i] * 100.0,7:F1}{_slparm.Rock[i] * 100.0,7:F1}{_slparm.Om[i] * 100.0,7:F1}{_slparm.Rhob[i],9:F0} {satcon,9:F3}{satkl,9:F3}{_slparm.Soilwrc[i][1],9:F2}{_slparm.Soilwrc[i][2],11:F3}{_slparm.Soilwrc[i][3],10:F3}    {asalt[i],6:F1}{disper[i],8:F6}");
+                        generalOut.WriteLine($"    {zs[i],6:F3}{_slparm.Sand[i] * 100.0,7:F1}{_slparm.Silt[i] * 100.0,7:F1}{_slparm.Clay[i] * 100.0,7:F1}{_slparm.Rock[i] * 100.0,7:F1}{_slparm.Om[i] * 100.0,7:F1}{_slparm.Rhob[i],9:F0} {_slparm.Satk[i] * 360000.0,9:F3}{_slparm.Satklat[i] * 360000.0,9:F3}{_slparm.Soilwrc[i][1],9:F2}{_slparm.Soilwrc[i][2],11:F3}{_slparm.Soilwrc[i][3],10:F3}    {asalt[i],6:F1}{disper[i],8:F6}");
                     }
                 }
             }   // line 2575
@@ -1673,8 +2033,7 @@ namespace Landis.Extension.ShawDamm
             return true;
         }
 
-
-        private bool SetInitialConditions(int ns, int inph2o, double[] tsdt, double[] vlcdt, double[] vicdt, double[] matdt, double[][] concdt, int[] icesdt, double[][] saltdt, 
+        private bool SetInitialConditions(int ns, int inph2o, double[] tsdt, double[] vlcdt, double[] vicdt, double[] matdt, double[][] concdt, int[] icesdt, double[][] saltdt,
             int jstart, int yrstar, int hrstar)
         {
             //
@@ -1832,7 +2191,7 @@ namespace Landis.Extension.ShawDamm
             int itmpbc, int ivlcbc, int lvlout2, int mpltgro, int nrchang, int mwatrxt, int ns,
             double alatud, double hrnoon, double[] sunhor, double[] tmpday, double[] winday, double[] humday, double[] precip, double[] snoden, double[] soitmp,
             double[] vlcday, double[][] soilxt, ref int nplant, double[] plthgt, double[] dchar, double[] clumpng, double[] pltwgt, double[] pltlai, double[] rootdp,
-            ref double zrthik, ref double rload, ref double cover, ref double albres, ref double rescof, ref double restkb, 
+            ref double zrthik, ref double rload, ref double cover, ref double albres, ref double rescof, ref double restkb,
             int totalDays, int dayCounter, List<double[]> dailySoilTemperature, double vlcdayBcInit)
         {
             //
@@ -1867,6 +2226,13 @@ namespace Landis.Extension.ShawDamm
             var jd = 0;
             var jh = 0;
 
+
+            // JM: assign pltlai based on julian and LeafOn/LeafOffDay
+            for (var i = 1; i <= _nplant; ++i)
+            {
+                pltlai[i] = julian >= _pltLeafOn[i] && julian <= _pltLeafOff[i] ? _pltlaiOn[i] : 0.0;
+            }
+
             //**** READ WEATHER DATA
             //
             //     CHECK FLAG (MTSTEP) FOR TYPE OF WEATHER DATA:  0 = HOURLY;
@@ -1887,74 +2253,74 @@ namespace Landis.Extension.ShawDamm
                 _dayinpSave.Nstep = 1;
             }
 
-            // JM: only support daily weather input
-            /*
-            else
+        // JM: only support daily weather input
+        /*
+        else
+        {
+            //       SUB-DAILY INPUT (PROBABLY HOURLY)
+            if (inital == 0)
             {
-                //       SUB-DAILY INPUT (PROBABLY HOURLY)
-                if (inital == 0)
+                //         FIRST TIME INTO SUBROUTINE - FIND CORRECT PLACE IN DATA SET
+                //         WHICH IS HOUR NSTEP OF CURRENT DAY
+                _dayinpSave.Nstep = 1;
+                if (mtstep == 2) _dayinpSave.Nstep = nhrpdt;
+                label10:;
+                if (WeatherDataEOS)
                 {
-                    //         FIRST TIME INTO SUBROUTINE - FIND CORRECT PLACE IN DATA SET
-                    //         WHICH IS HOUR NSTEP OF CURRENT DAY
-                    _dayinpSave.Nstep = 1;
-                    if (mtstep == 2) _dayinpSave.Nstep = nhrpdt;
-                    label10:;
-                    if (WeatherDataEOS)
-                    {
-                        Console.WriteLine("CANNOT FIND WEATHER DATA FOR BEGINNING DAY");
-                        generalOut.WriteLine("CANNOT FIND WEATHER DATA FOR BEGINNING DAY");
-                        return false;
-                    }
-
-                    // READ(12,*,END=100) JD,JH,JYR,TMPDAY(NSTEP),WINDAY(NSTEP),HUMDAY(NSTEP),PRECIP(NSTEP),SNODEN(NSTEP),SUNHOR(NSTEP)
-                    t = ParseNextLine(InputFile.WeatherData);
-                    jd = int.Parse(t[0]); jh = int.Parse(t[1]); jyr = int.Parse(t[2]); tmpday[_dayinpSave.Nstep] = double.Parse(t[3]); winday[_dayinpSave.Nstep] = double.Parse(t[4]); humday[_dayinpSave.Nstep] = double.Parse(t[5]); precip[_dayinpSave.Nstep] = double.Parse(t[6]); snoden[_dayinpSave.Nstep] = double.Parse(t[7]); sunhor[_dayinpSave.Nstep] = double.Parse(t[8]);
-
-                    if (jh == 0 && _dayinpSave.Nstep == 24)
-                    {
-                        //            OBSCURE CASE OF 24-HOUR (BUT NOT DAILY) WEATHER FILE;
-                        //            WILL NEVER FIND HOUR 24 IF INPUT ASSUMES HOUR 0 AT MIDNIGHT
-                        jh = 24;
-                        jd = jd - 1;
-                        if (jd == 0)
-                        {
-                            jyr = jyr - 1;
-                            jd = 365;
-                            if (jyr % 4 == 0) jd = 366;
-                        }
-                    }
-                    if (jd != julian || jyr != year || jh != _dayinpSave.Nstep) goto label10;
-                    _dayinpSave.Nstart = 2 * _dayinpSave.Nstep;
-                }
-                else
-                {
-                    //        SUB-DAILY INPUT (PROBABLY HOURLY); SET STARTING HOUR TO READ
-                    _dayinpSave.Nstart = _dayinpSave.Nstep;
-                }
-                //
-                for (var i = _dayinpSave.Nstart; i <= 24; i += _dayinpSave.Nstep)
-                {
-                    // READ (12,*) JD,JH,JYR,TMPDAY(I),WINDAY(I),HUMDAY(I),PRECIP(I),SNODEN(I),SUNHOR(I)
-                    t = ParseNextLine(InputFile.WeatherData);
-                    jd = int.Parse(t[0]); jh = int.Parse(t[1]); jyr = int.Parse(t[2]); tmpday[i] = double.Parse(t[3]); winday[i] = double.Parse(t[4]); humday[i] = double.Parse(t[5]); precip[i] = double.Parse(t[6]); snoden[i] = double.Parse(t[7]); sunhor[i] = double.Parse(t[8]);
-                label20:;
-                }
-                //
-                //       MAKE SURE IT IS AT THE RIGHT POINT IN THE DATA FILE
-                if (jd != (julian + 1) || jh != 0)
-                {
-                    //         CHECK FOR EXCEPTIONS -> END OF YEAR OR CALLING HOUR 0, HOUR 24
-                    if (jd == julian && jh == 24) goto label25;
-                    if (julian == maxjul && jd == 1 && jh == 0) goto label25;
-                    //         NOT AT THE CORRECT POINT IN THE DATA FILE
-                    Console.WriteLine(" ENCOUNTERED PROBLEMS READING HOURLY WEATHER DATA");
-                    Console.WriteLine($" FOR JULIAN DAY {julian} IN SUBROUTINE DAYINP");
-                    generalOut.WriteLine(" ENCOUNTERED PROBLEMS READING HOURLY WEATHER DATA");
-                    generalOut.WriteLine($" FOR JULIAN DAY {julian} IN SUBROUTINE DAYINP");
+                    Console.WriteLine("CANNOT FIND WEATHER DATA FOR BEGINNING DAY");
+                    generalOut.WriteLine("CANNOT FIND WEATHER DATA FOR BEGINNING DAY");
                     return false;
                 }
+
+                // READ(12,*,END=100) JD,JH,JYR,TMPDAY(NSTEP),WINDAY(NSTEP),HUMDAY(NSTEP),PRECIP(NSTEP),SNODEN(NSTEP),SUNHOR(NSTEP)
+                t = ParseNextLine(InputFile.WeatherData);
+                jd = int.Parse(t[0]); jh = int.Parse(t[1]); jyr = int.Parse(t[2]); tmpday[_dayinpSave.Nstep] = double.Parse(t[3]); winday[_dayinpSave.Nstep] = double.Parse(t[4]); humday[_dayinpSave.Nstep] = double.Parse(t[5]); precip[_dayinpSave.Nstep] = double.Parse(t[6]); snoden[_dayinpSave.Nstep] = double.Parse(t[7]); sunhor[_dayinpSave.Nstep] = double.Parse(t[8]);
+
+                if (jh == 0 && _dayinpSave.Nstep == 24)
+                {
+                    //            OBSCURE CASE OF 24-HOUR (BUT NOT DAILY) WEATHER FILE;
+                    //            WILL NEVER FIND HOUR 24 IF INPUT ASSUMES HOUR 0 AT MIDNIGHT
+                    jh = 24;
+                    jd = jd - 1;
+                    if (jd == 0)
+                    {
+                        jyr = jyr - 1;
+                        jd = 365;
+                        if (jyr % 4 == 0) jd = 366;
+                    }
+                }
+                if (jd != julian || jyr != year || jh != _dayinpSave.Nstep) goto label10;
+                _dayinpSave.Nstart = 2 * _dayinpSave.Nstep;
             }
-            */
+            else
+            {
+                //        SUB-DAILY INPUT (PROBABLY HOURLY); SET STARTING HOUR TO READ
+                _dayinpSave.Nstart = _dayinpSave.Nstep;
+            }
+            //
+            for (var i = _dayinpSave.Nstart; i <= 24; i += _dayinpSave.Nstep)
+            {
+                // READ (12,*) JD,JH,JYR,TMPDAY(I),WINDAY(I),HUMDAY(I),PRECIP(I),SNODEN(I),SUNHOR(I)
+                t = ParseNextLine(InputFile.WeatherData);
+                jd = int.Parse(t[0]); jh = int.Parse(t[1]); jyr = int.Parse(t[2]); tmpday[i] = double.Parse(t[3]); winday[i] = double.Parse(t[4]); humday[i] = double.Parse(t[5]); precip[i] = double.Parse(t[6]); snoden[i] = double.Parse(t[7]); sunhor[i] = double.Parse(t[8]);
+            label20:;
+            }
+            //
+            //       MAKE SURE IT IS AT THE RIGHT POINT IN THE DATA FILE
+            if (jd != (julian + 1) || jh != 0)
+            {
+                //         CHECK FOR EXCEPTIONS -> END OF YEAR OR CALLING HOUR 0, HOUR 24
+                if (jd == julian && jh == 24) goto label25;
+                if (julian == maxjul && jd == 1 && jh == 0) goto label25;
+                //         NOT AT THE CORRECT POINT IN THE DATA FILE
+                Console.WriteLine(" ENCOUNTERED PROBLEMS READING HOURLY WEATHER DATA");
+                Console.WriteLine($" FOR JULIAN DAY {julian} IN SUBROUTINE DAYINP");
+                generalOut.WriteLine(" ENCOUNTERED PROBLEMS READING HOURLY WEATHER DATA");
+                generalOut.WriteLine($" FOR JULIAN DAY {julian} IN SUBROUTINE DAYINP");
+                return false;
+            }
+        }
+        */
         //
         label25:;
             for (var i = _dayinpSave.Nstep; i <= 24; i += _dayinpSave.Nstep)
@@ -2030,7 +2396,6 @@ namespace Landis.Extension.ShawDamm
 
             //inhr = inhour;
             //nstep2 = 1;
-
 
             //**** READ MOISTURE CONTENT DATA FOR THE LOWER BOUNDARY CONDITION
             //
@@ -2615,20 +2980,20 @@ namespace Landis.Extension.ShawDamm
         private bool Day2Hr(int julian, int year, int inital, ref double[] sunhor, ref double[] tmpday, ref double[] winday, ref double[] humday,
                     ref double[] precip, ref double[] snoden, double alatud, double hrnoon)
         {
-            // 
+            //
             //      THIS SUBROUTINE SEPARATES DAILY VALUES FOR MAXIMUM-MINIMUM AIR
             //      TEMPERATURE (C), DEW-POINT TEMPERATURE (C), WIND RUN (MILES),
             //      PRECIPITATION (INCHES) AND SOLAR RADIATION (W/M2) INTO HOURLY
             //      VALUES OF TEMPERATURE, WINDSPEED, RELATIVE HUMIDITY, PRECIPITATION
             //      AND SOLAR RADIATION.
-            // 
+            //
             //      THE INPUT FILE IS READ WITH OPEN FORMAT, AND DATA FOR EACH DAY IN
             //      THE INPUT FILE MUST BE IN THE FOLLOWING ORDER:
-            // 
+            //
             //      DAY, YEAR, MAX TEMP, MIN TEMP, DEW-POINT, WIND, PRECIP, SOLAR
-            // 
+            //
             //      For example:
-            // 
+            //
             //       65  87   12.3    4.6    2.6   109.0   0.09    38.9
             //       66  87   13.2    1.6    0.6    77.6   0.00   171.1
             //       67  87   15.8    1.4    1.4   125.0   0.06   168.8
@@ -2668,7 +3033,6 @@ namespace Landis.Extension.ShawDamm
 
                 _day2hrSave.Tmax1 = _day2hrSave.Tmax;
                 _day2hrSave.Tmin1 = _day2hrSave.Tmin;
-
 
                 //    if (_day2hrSave.Jday == julian && _day2hrSave.Jyr == year)
                 //        break;
@@ -2730,7 +3094,7 @@ namespace Landis.Extension.ShawDamm
             var sunmax = Swrcoe.Solcon * (hafday * Math.Sin(alatud) * Math.Sin(declin) + Math.Cos(alatud) * Math.Cos(declin) * Math.Sin(hafday)) / pi;
 
             //         IF MAXIMUM SOLAR IS ZERO; ATMOSPHERE TRANSMISSIVITY IS UNDEFINED
-            //         SET TTOTAL TO 1.0; ANY MEASURED SOLAR WILL BE DISTRIBUTED EVENLY 
+            //         SET TTOTAL TO 1.0; ANY MEASURED SOLAR WILL BE DISTRIBUTED EVENLY
             var ttotal = sunmax > 0.0 ? _day2hrSave.Solar / sunmax : 1.0;
             var sunris = hrnoon - hafday / 0.261799;
             var sunset = hrnoon + hafday / 0.261799;
@@ -2738,7 +3102,7 @@ namespace Landis.Extension.ShawDamm
 
             for (var hour = 1; hour <= 24; ++hour)
             {
-                // **** SET HOUR TO MID-POINT OF THE HOUR, OR IF THE SUN RISES OR SETS IN 
+                // **** SET HOUR TO MID-POINT OF THE HOUR, OR IF THE SUN RISES OR SETS IN
                 //      THIS HOUR, SET HOUR TO MID-POINT OF THE HOUR AND TIME AT WHICH IT
                 //      RISES OR SETS.
                 var halfhr = hour - 0.5;
@@ -2746,7 +3110,7 @@ namespace Landis.Extension.ShawDamm
                 {
                     if (hour > sunris && hour - 1.0 < sunris) halfhr = (sunris + hour) / 2.0;
                     if (hour > sunset && hour - 1.0 < sunset) halfhr = sunset - (sunset - (hour - 1)) / 2.0;
-                    //        
+                    //
                     // ****   DETERMINE THE GEOMETRY OF THE SUN ANGLE AT THE HOUR MID=POINT
                     var hrangl = 0.261799 * (halfhr - hrnoon);
                     var altitu = Math.Asin(Math.Sin(alatud) * Math.Sin(declin) + Math.Cos(alatud) * Math.Cos(declin) * Math.Cos(hrangl));
@@ -2800,7 +3164,7 @@ namespace Landis.Extension.ShawDamm
                 {
                     if (hour < sunset + dtdsk)
                     {
-                        //              PARTIAL COSINE CURVE 
+                        //              PARTIAL COSINE CURVE
                         tmpday[hour] = 0.5 * (_day2hrSave.Tmax + _day2hrSave.Tmin + (_day2hrSave.Tmax - _day2hrSave.Tmin) * Math.Cos(pi / day * (hour - timmax)));
                     }
                     else
@@ -2814,15 +3178,15 @@ namespace Landis.Extension.ShawDamm
                     tmpday[hour] = 0.5 * (_day2hrSave.Tmax + _day2hrSave.Tmin + (_day2hrSave.Tmax - _day2hrSave.Tmin) * Math.Cos(pi / day * (hour - timmax)));
                 }
 
-                // 
+                //
                 // ****    CALCULATE HUMIDITY
                 var satv = 0.0;
                 Vslope(ref s, ref satv, ref tmpday[hour]);
                 humday[hour] = 100.0 * vapor / satv;
                 if (humday[hour] > 100.0) humday[hour] = 100.0;
 
-                // 
-                // ***     COMPUTE NIGHTTIME WIND ADJUSTMENT TO ENSURE AVERAGE WINDSPEED 
+                //
+                // ***     COMPUTE NIGHTTIME WIND ADJUSTMENT TO ENSURE AVERAGE WINDSPEED
                 //         OVER ENTIRE DAY REMAINS SAME
                 var wndnght = (24.0 - wndnoon * 2.0 * daylen / pi) / (24.0 - 2.0 * daylen / pi);
 
@@ -2844,7 +3208,7 @@ namespace Landis.Extension.ShawDamm
             for (var jj = 0; jj < snoden.Length; ++jj) snoden[jj] = 0.0;
 
             //      COMPUTE TIME OF MEAN TEMPERATURE: MIDWAY BETWEEN TMAX AND TMIN AND
-            //      PUT PRECIP AT TIME OF MEAN TEMPERATURE          
+            //      PUT PRECIP AT TIME OF MEAN TEMPERATURE
             var imean = Math.Round((timmin + hrnoon + 1.8) / 2.0);
             precip[Convert.ToInt32(imean)] = _day2hrSave.Prec;
 
@@ -2876,8 +3240,8 @@ namespace Landis.Extension.ShawDamm
             var generalOut = _outputWriters[OutputFile.EntireProfile];
             var dummy = 0.0;
 
-            //      IF THIS IS THE FIRST TIME INTO SUBROUTINE, INITIALIZE SUMMATIONS 
-            //      FOR AVG TEMPERATURE, MOISTURE & SALTS, WATER FLOW BETWEEN SOIL 
+            //      IF THIS IS THE FIRST TIME INTO SUBROUTINE, INITIALIZE SUMMATIONS
+            //      FOR AVG TEMPERATURE, MOISTURE & SALTS, WATER FLOW BETWEEN SOIL
             //      LAYERS, AND TOTAL ROOT EXTRACTION
             if (outputInital == 0)
             {
@@ -3129,7 +3493,7 @@ namespace Landis.Extension.ShawDamm
                 {
                     if (hour % lvlout[6] == 0 || outputInital == 0)
                     {
-                        _outputWriters[OutputFile.SoilLiquidWaterContent].WriteLine($"{julian,4:D}{hour,3:D}{year,5:D}{string.Concat(Enumerable.Range(1, ns).Select(i => $"{_outputSave.Avgmat[i] / _outputSave.Navmat,10:F1}"))}");
+                        _outputWriters[OutputFile.SoilMatricPotential].WriteLine($"{julian,4:D}{hour,3:D}{year,5:D}{string.Concat(Enumerable.Range(1, ns).Select(i => $"{_outputSave.Avgmat[i] / _outputSave.Navmat,10:F1}"))}");
 
                         for (var i = 1; i <= ns; ++i)
                         {

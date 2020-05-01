@@ -104,13 +104,13 @@ namespace Landis.Extension.ShawDamm
         private double _zrthik;
         private double _rload;
         private double _cover;
-        private double _albres;
-        private double _rescof;
-        private double _restkb;
+        private static double _albres;
+        private static double _rescof;
+        private static double _restkb;
         private double[] _zs = new double[51];
         private double[][] _saltdt = JaggedArray<double>(11, 51);
-        private double _albdry;
-        private double _albexp;
+        private static double _albdry;
+        private static double _albexp;
         private double[] _dgrade = new double[11];
         private double[] _sltdif = new double[11];
         private double[] _asalt = new double[51];
@@ -120,13 +120,15 @@ namespace Landis.Extension.ShawDamm
         private double _zersrf;
         private double _zmsp;
         private double _zhsp;
-        private double _height;
+        private static double _zmcm;
+        private static double _height;
+        private static double _pondcm;
         private double _pondmx;
-        private int _nhrpdt;
-        private int _jstart;
+        private int _nhrpdt = 24;
+        private int _jstart = 0;
         private int _jend;
         private int _yrstar;
-        private int _hrstar;
+        private int _hrstar = 24;
         private int _yrend;
         private double _wdt;
         private double _alatud;
@@ -134,7 +136,7 @@ namespace Landis.Extension.ShawDamm
         private double _aspect;
         private double _hrnoon;
 
-        private double[] _vlcdt;
+        private double[] _vlcdt = new double[51];
         private int _outputInital;
 
         private int _inital;
@@ -173,6 +175,10 @@ namespace Landis.Extension.ShawDamm
         private double _snowex;
         private double _dirres;
         private double _pond;
+
+        private double[] _pltlaiOn = new double[9];
+        private int[] _pltLeafOn = new int[9];
+        private int[] _pltLeafOff = new int[9];
 
         #endregion
 
@@ -228,7 +234,7 @@ namespace Landis.Extension.ShawDamm
         private static int _mtstep = 1;
         private static int _iflagsi = 1;
         private static int _inph2o = 0;
-        private static int _mwatrxt;
+        private static int _mwatrxt = 0;
         private static int[] _lvlout;
 
         //public int Ivlcbc => _ivlcbc;
@@ -240,119 +246,63 @@ namespace Landis.Extension.ShawDamm
 
         public string Name { get; set; }
 
-        public static SimpleFileParser InputFileParser { get; private set; }
+        //public static SimpleFileParser InputFileParser { get; private set; }
         
         public static bool HasGlobalSetup { get; private set; }
 
         #endregion
 
-        public static bool ReadInputFile(string inputFilePath, out string errorMessage)
+        public bool Initialize(string name, double latDegrees, double latMinutes, double slope, double aspect, double elevation, double hourNoon, Dictionary<string, string> thuFileData, Dictionary<string, Dictionary<string, string>> plantFileData, Dictionary<string, Dictionary<string, string>> soilFileData, out string errorMessage)
         {
             errorMessage = string.Empty;
-            _wd = Path.GetDirectoryName(inputFilePath);
-
-
-            InputFileParser = new SimpleFileParser(inputFilePath, out errorMessage);
-            if (!string.IsNullOrEmpty(errorMessage))
-                return false;
-
-
-            bool isMissing;
-            string sval;
-            int ival;
-            double dval;
-
-            // ModelSelectionFlags
-            if (!InputFileParser.TryParse("StomatalResistance", out _istomate, out errorMessage, 0, true, 1, true))
-                return false;
-
-            if (!InputFileParser.TryParse("BoundaryTemperatureCondition", out _itmpbc, out errorMessage, 0, true, 1, true))
-                return false;
-
-            if (!InputFileParser.TryParse("EquationForWaterReleaseCurve", out Slparm.Iwrc, out errorMessage, 0, true, 1, true))
-                return false;
-
-            if (!InputFileParser.TryParse("FlagSourceSink", out _mwatrxt, out errorMessage, 0, true, 1, true))
-                return false;
-
-
-            if (!InputFileParser.TryParse("ErrorTolerance", out _toler, out errorMessage, 1e-6))
-                return false;
-
-            // PlantParameters
-            if (!InputFileParser.TryParse("CoefficientWaterPotentialDeadPlants", out _canma, out errorMessage))
-                return false;
-
-            if (!InputFileParser.TryParse("ExponentWaterPotentialDeadPlants", out _canmb, out errorMessage))
-                return false;
-
-            // SnowParameters
-            if (!InputFileParser.TryParse("SnowBasedOn", out sval, out errorMessage))
-                return false;
-
-            if (sval.Equals("AirTemp", StringComparison.OrdinalIgnoreCase))
-                _isnotmp = 1;
-            else if (sval.Equals("WetBulbTemp", StringComparison.OrdinalIgnoreCase))
-                _isnotmp = 2;
-            else
-            {
-                errorMessage = "Cannot parse 'SnowBasedOn' as either 'AirTemp' or 'WetBulbTemp'";
-                return false;
-            }
-
-            if (!InputFileParser.TryParse("MaxTempSnowfall", out _snotmp, out errorMessage))
-                return false;
-
-            if (!InputFileParser.TryParse("WindProfileParameterSnow", out _zmspcm, out errorMessage, 0, true))
-                return false;
-
-
-
-            // read logging output flags.  If the logging name exists, set the corresponding _lvlout[] index to 24 for 24 hr output.
-            _lvlout = new int[21];
-
-            var logNames = Enum.GetNames(typeof(OutputFile));
-            var logLvlouts = Enum.GetValues(typeof(OutputFile)).Cast<int>().ToList();
-            for (var i = 0; i < logNames.Length; ++i)
-            {
-                bool containsToken;
-                if (!InputFileParser.TryContainsToken(logNames[i], out containsToken, out errorMessage))
-                    return false;
-
-                if (containsToken)
-                    _lvlout[logLvlouts[i]] = 24;
-            }
-
-            return true;
-        }
-
-        public bool Initialize(string name)
-        {
             Name = name;
-            if (!InputSiteFile(_wd, _iversion, ref _nc, ref _nsp, ref _nr, ref _ns,
-               ref _toler, _level, _iflagsi, ref _mzcinp, ref _mpltgro, ref _nrchang,
-               ref _ivlcbc, ref _itmpbc, ref _tsavg, ref _nplant, _plthgt, _pltwgt, _pltlai, _rootdp,
-               _dchar, _tccrit, _rstom0, _rstexp, _pleaf0, _rleaf0, _rroot0, _canalb,
-               ref _canma, ref _canmb, ref _wcmax, _pintrcp, _xangle, _clumpng, _itype, _zc, _wcandt,
-               ref _istomate, _stomate, _zsp, _dzsp, _rhosp, _tspdt, _dlwdt, _icespt, ref _isnotmp,
-               ref _snotmp, _gmcdt, ref _gmcmax, ref _zrthik, ref _rload, ref _cover, ref _albres, ref _rescof,
-               ref _restkb, _zs, _saltdt,
-               ref _albdry, ref _albexp, _dgrade, _sltdif, _asalt, _disper, ref _zmsrf, ref _zhsrf,
-               ref _zersrf, ref _zmsp, ref _zhsp, ref _height, ref _pondmx, ref _jstart, ref _yrstar, ref _hrstar,
-               ref _jend, ref _yrend, ref _nhrpdt, ref _wdt, ref _alatud, ref _slope, ref _aspect, ref _hrnoon))
+
+            _outputWriters = new Dictionary<ShawDamm.OutputFile, StreamWriter>(); // dictionary of stream writers for various kinds of output
+            _inputReaders = new Dictionary<ShawDamm.InputFile, StreamReader>();  // dictionary of input data
+
+            // make stream writers for the output logging files
+            var logPath = Path.Combine(_wd, "Outputs", $"Log_{Name}");
+            if (!Directory.Exists(logPath))
+                Directory.CreateDirectory(logPath);
+
+            for (var i = 1; i < _lvlout.Length; ++i)
+                if (_lvlout[i] > 0)
+                {
+                    _outputWriters[(OutputFile)i] = new StreamWriter(Path.Combine(logPath, _outputFileNames[i]));
+                }
+
+            _hrnoon = hourNoon;
+
+            if (!InputSiteFile(_wd, _iversion, ref _nc,
+               _iflagsi, ref _mzcinp, ref _mpltgro, ref _nrchang,
+               ref _wcmax, _zc, _wcandt,
+               _zsp, _dzsp, _rhosp, _tspdt, _dlwdt, _icespt, 
+               _gmcdt, ref _gmcmax, _zs, _saltdt,
+               _dgrade, _sltdif, _asalt, _disper, ref _zmsrf, ref _zhsrf,
+               ref _zersrf, ref _zmsp, ref _zhsp, ref _pondmx, ref _wdt, ref _alatud, ref _slope, ref _aspect, 
+               latDegrees, latMinutes, slope, aspect, elevation,
+               thuFileData, plantFileData, soilFileData, out errorMessage))
             {
                 Abort();
                 return false;
             }
 
+            //var soilMoistureData = File.ReadAllLines(Path.Combine(_wd, moistureFileName)).Where(x => !string.IsNullOrEmpty(x)).ToArray();
+            //var t = ParseLine(soilMoistureData.First());
+            //t = t.GetRange(3, t.Count - 3);    // remove day-hr-time
+
+            //var soilMoistureInit = t.Select(x => double.Parse(x)).ToArray();
+
+            //SetInitialSoilMoisture(soilMoistureInit);
+
             return true;
         }
 
-        public void SetInitialSoilMoisture(double[] soilMoistureInit)
-        {
-            _vlcdt = new double[_ns + 1];
-            Array.Copy(soilMoistureInit, 0, _vlcdt, 1, _ns);
-        }
+        //public void SetInitialSoilMoisture(double[] soilMoistureInit)
+        //{
+        //    _vlcdt = new double[_ns + 1];
+        //    Array.Copy(soilMoistureInit, 0, _vlcdt, 1, _ns);
+        //}
 
         public List<double> GetDepths()
         {
@@ -374,8 +324,22 @@ namespace Landis.Extension.ShawDamm
         /// <param name="averageAnnualSoilTemperature">The average annual soil temperature.</param>
         /// <param name="soilMoistureInit">The soil moisture initialize.</param>
         /// <returns></returns>
-        public ShawDammResults CalculateSoilResults(int year, int julian, ShawDammDailyWeatherRecord[] weatherData, List<double[]> dailySoilTemperature, double averageAnnualSoilTemperature)
+        public ShawDammResults CalculateSoilResults(int year, int month, int julian, ShawDammDailyWeatherRecord[] weatherData, List<double[]> dailySoilTemperature, double averageAnnualSoilTemperature)
         {
+            //// debug: disable logging until needed
+            //for (var i = 1; i < _lvlout.Length; ++i)
+            //    _lvlout[i] = 0;
+
+            //if (year == 1976 && month >= 7)
+            //{
+            //    _lvlout[1] = 24;
+            //}
+
+            //if (year == 1976 && julian >= 197)
+            //{
+            //    _lvlout[1] = 24;
+            //}
+
             _weatherData = weatherData;
             _weatherDataIndex = -1;
 
@@ -401,7 +365,7 @@ namespace Landis.Extension.ShawDamm
 
             if (_inital == 0)
             {
-                // don't read initial soil temperature and moisture as these have been passed to this routineS
+                // don't read initial soil temperature and moisture as these have been passed to this routine
                 if (!SetInitialConditions(_ns, _inph2o, _tsdt, _vlcdt, _vicdt, _matdt, _concdt, _icesdt, _saltdt, _jstart, _yrstar, _hrstar))
                 {
                     Abort();
@@ -2077,7 +2041,7 @@ namespace Landis.Extension.ShawDamm
                 if (lvlout[20] != 0)
                 {
                     _goshawSave.Nprint = _goshawSave.Nprint + 1;
-                    if (_goshawSave.Nprint % lvlout[20] == 0)
+                    if (lvlout[20] != 0 && _goshawSave.Nprint % lvlout[20] == 0)
                     {
                         if (_lvlout[2] > 0)
                             generalOut.WriteLine($"+ Completed :      {julian,4:D}   {hour,4:D}   {year,4:D}     {_goshawSave.Minstp,4:D}      {_goshawSave.Maxstp,4:D}");
@@ -7072,6 +7036,11 @@ namespace Landis.Extension.ShawDamm
             Fslope(1, ref dldt, ref dummy, ref t, mat, conc, vlc);
             //     ENTER MATVLC FOR SLOPE OF LIQUID-MATRIC POTENTIAL CURVE
             Matvl3(1, ref matdt[1], ref vlcdt[1], ref dldm);
+            
+            // JM: B1[n] goes to NaN if dldtdt & dldm are 0.0 
+            if (double.IsNaN(dldtdt / dldm))
+                dldtdt = dldm = 1.0;
+
             _matrix.B1[n] = _matrix.B1[n] - (zs[2] - zs[1]) / (2.0 * _timewt.Dt) * 0.5 * Constn.Rhol * Constn.Lf * (dldt + dldtdt) - _timewt.Wdt * Constn.Rhol * Constn.Lf * conh[1] * dldtdt / dldm;
         //
         //**** DETERMINE THE MATRIX COEFFICIENTS FOR THE REST OF THE PROFILE
@@ -7113,7 +7082,13 @@ namespace Landis.Extension.ShawDamm
                 Fslope(j, ref dldt, ref dummy, ref t, mat, conc, vlc);
                 //        ENTER MATVLC FOR SLOPE OF LIQUID-MATRIC POTENTIAL CURVE
                 Matvl3(j, ref matdt[j], ref vlcdt[j], ref dldm);
+
+                // JM: B1[i] goes to NaN if dldtdt & dldm are 0.0 
+                if (double.IsNaN(dldtdt / dldm))
+                    dldtdt = dldm = 1.0;
+
                 _matrix.B1[i] = _matrix.B1[i] - (zs[j + 1] - zs[j - 1]) / (2.0 * _timewt.Dt) * 0.5 * Constn.Rhol * Constn.Lf * (dldt + dldtdt) - _timewt.Wdt * Constn.Rhol * Constn.Lf * (conh[j - 1] + conh[j]) * dldtdt / dldm;
+
             label30:;
             }
             n = n + ns - 2;
@@ -10385,7 +10360,7 @@ namespace Landis.Extension.ShawDamm
             //
             //
             //     RETURN IF HOURLY OUTPUT IS NOT REQUIRED AND IT IS NOT END OF DAY
-            if (hour % lvlout != 0) return;
+            if (lvlout == 0 || hour % lvlout != 0) return;
             //
             //     CONVERT TO MILLIMETERS
             tpcan = tpcan * 1000.0;
@@ -10475,7 +10450,7 @@ namespace Landis.Extension.ShawDamm
                 _energySave.Slatnt = _energySave.Slatnt + Constn.Lv * evap1 * Constn.Rhol / 1000.0;
             }
             //     RETURN IF HOURLY OUTPUT IS NOT REQUIRED AND IT IS NOT END OF DAY
-            if (hour % lvlout != 0) return;
+            if (lvlout == 0 || hour % lvlout != 0) return;
             //
             var totswr = _energySave.Sswcan + _energySave.Sswsno + _energySave.Sswres + _energySave.Sswsoi;
             var totlwr = _energySave.Slwcan + _energySave.Slwsno + _energySave.Slwres + _energySave.Slwsoi;
@@ -10524,7 +10499,7 @@ namespace Landis.Extension.ShawDamm
                 _outputWriters[OutputFile.SnowTemperature].WriteLine("  DY HR   YR  n DEPTH     0cm  10cm  20cm  30cm . . . etc to snow surface");
             }
             //
-            if (hour % lvlout != 0 || nsp == 0) return;
+            if (lvlout == 0 || hour % lvlout != 0 || nsp == 0) return;
             //
             //     Reverse depths to measure up from surface
             for (i = 1; i <= nsp + 1; ++i)
@@ -10602,7 +10577,7 @@ namespace Landis.Extension.ShawDamm
                 goto label5;
             }
             //
-            if (hour % lvlout != 0) return;
+            if (lvlout == 0 || hour % lvlout != 0) return;
             //
             //     FIND LAYERS OF MAXIMUM THAW AND FROST
             label5:;
