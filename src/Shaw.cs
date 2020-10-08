@@ -313,6 +313,15 @@ namespace Landis.Extension.ShawDamm
             return depths;
         }
 
+        public List<double> GetSoilThetaSat()
+        {
+            var thetaSats = new List<double>(_ns);
+            for (var i = 1; i <= _ns; ++i)
+                thetaSats.Add(_slparm.Soilwrc[i][2]);
+
+            return thetaSats;
+        }
+
         /// <summary>Calculates the soil results. 
         /// 'soilTempBcFinal' is used when ITMPBC = 0 and GIPL is used to estimate the soil temperature boundary condition.
         /// 'averageAnnualSoilTemperature' is used when ITMPBC = 1 and GIPL is not used.  TSAVG is set to this value.
@@ -351,10 +360,15 @@ namespace Landis.Extension.ShawDamm
 
             if (_inital == 0)
             {
-                // copy soil temperature parameter for the first day (0-based) into Shaw's initial soil temperature profile (1-based)
                 _tsdt = new double[_ns + 1];
-                Array.Copy(dailySoilTemperature.First(), 0, _tsdt, 1, _ns);
             }
+
+            // set the first day's soil temperature
+            // copy soil temperature parameter for the first day (0-based) into Shaw's initial soil temperature profile (1-based)
+            Array.Copy(dailySoilTemperature.First(), 0, _tsdt, 1, _ns);
+
+            //// JJJJJJ
+            //_tsdt = new double[] { -1, -6.0, -6.0, -6.0, -2, -2, -2, -2, -2, -2, .5, .5, .5, .5, .5, .5, .5, .5, .5, .5, .5, .5, .5, .5, .5 };
 
             var results = new ShawDammResults(_ns, _zs);
 
@@ -436,7 +450,8 @@ namespace Landis.Extension.ShawDamm
             }
 
             var dayCounter = 1;
-            var totalDays = weatherData.Length - 1;
+            //var totalDays = weatherData.Length - 1;
+            var totalDays = weatherData.Length;
 
             if (!Dayinp(julian, year, maxjul, hour, _nhrpdt, _mtstep, _iversion, _iflagsi,
                 _inital, _itmpbc, _ivlcbc, _lvlout[2], _mpltgro, _nrchang,
@@ -469,10 +484,13 @@ namespace Landis.Extension.ShawDamm
             var ishiter = 1;
             var ishitermax = -1;
 
+            //_level[1] = 2;
+            // *JJJJJJ
+
             while (true)
             {
                 // JM: add soil profiles to results
-                results.AddOneBasedProfiles(_tsdt, _vlcdt);
+                results.AddOneBasedProfiles(_tsdt, _vlcdt, _vicdt, Constn.Rhoi, Constn.Rhol);
 
                 // **** START OF A NEW HOUR - UPDATE VALUES ASSUMED CONSTANT OVER THE HOUR
                 var dt = _nhrpdt * 3600.0;
@@ -499,6 +517,11 @@ namespace Landis.Extension.ShawDamm
                         //Console.ReadLine();
                         break;
                     }
+
+                    // JJJJJJ
+                    // set the day's soil temperature
+                    Array.Copy(dailySoilTemperature[dayCounter - 1], 0, _tsdt, 1, _ns);
+                    // *JJJJJJ
 
                     var int0 = 0;
                     var int1 = 1;
@@ -530,6 +553,13 @@ namespace Landis.Extension.ShawDamm
 
                 //_outputWriters[OutputFile.General].WriteLine($"CALL GOSHAW, ISHITER = {ishiter}");
 
+                for (var e = 1; e < 100; ++e)
+                {
+                    if (double.IsNaN(_matrix.A1[e]) || double.IsNaN(_matrix.A2[e]))
+                    {
+                        var nanstop = 0;
+                    }
+                }
 
                 if (!Goshaw(ref julian, ref hour, ref year, ref _nhrpdt, ref _wdt, ref dt, ref _inital, ref _nc, ref _nsp, ref _nr, ref _ns, ref _toler, _level, ref _mzcinp,
                     ref _nrchang, _inph2o, _mwatrxt, _lvlout, ref _ivlcbc, ref _itmpbc, ref _tsavg, ref _nplant, _plthgt, _pltwgt, _pltlai, _rootdp,
@@ -670,7 +700,6 @@ namespace Landis.Extension.ShawDamm
             var ices = new int[51];
             var icesp = new int[101];
 
-            var generalOut = _outputWriters[OutputFile.EntireProfile];
             var dummy = 0.0;
 
             var runoff = 0.0;
@@ -746,6 +775,7 @@ namespace Landis.Extension.ShawDamm
             var vap = 0.0;
             var vapdt = 0.0;
 
+            var convergenceIssue = false;
 
             // line 285
             if (inital == 0)
@@ -767,8 +797,8 @@ namespace Landis.Extension.ShawDamm
                             Console.WriteLine(" *** than or equal to residual water content. ***");
                             if (_lvlout[1] > 0)
                             {
-                                generalOut.WriteLine(" *** Input initial soil water content is less ***");
-                                generalOut.WriteLine(" *** than or equal to residual water content. ***");
+                                _outputWriters[OutputFile.EntireProfile].WriteLine(" *** Input initial soil water content is less ***");
+                                _outputWriters[OutputFile.EntireProfile].WriteLine(" *** than or equal to residual water content. ***");
                             }
                             return false;
                         }
@@ -825,7 +855,7 @@ namespace Landis.Extension.ShawDamm
                 hrstrt = hour - nhrpdt;
                 //        INITIALIZE THE WATER BALANCE SUMMARY
                 if (lvlout[11] != 0) Wbalnc(ref nplant, ref nc, ref nsp, ref nr, ref ns, ref lvlout[11], ref julian, ref hrstrt, ref year, itype, _outputInital, zc, wcan, wcandt, pcan, pcandt, vapc, vapcdt, rhosp,
-                    dzsp, dlwdt, wlag, ref store, zr, gmc, gmcdt, vapr, vaprdt, rhor, zs, vlc, vlcdt, vic, vicdt, totflo, ref precip, ref runoff, ref pond, ref evap1, ref _goshawSave.Melt, ref etsum, results);
+                    dzsp, dlwdt, wlag, ref store, zr, gmc, gmcdt, vapr, vaprdt, rhor, zs, vlc, vlcdt, vic, vicdt, totflo, ref precip, ref runoff, ref pond, ref evap1, ref _goshawSave.Melt, ref etsum, totlat, results);
                 //
                 //        PRINT OUT INITIAL CONDITIONS
                 Output(nplant, nc, ncmax, nsp, nr, ns, lvlout, 0, inph2o, julian, hrstrt, year, _outputInital, zc, tcdt, tlcdt, vapcdt, wcandt, rootxt, rhosp, zsp, tspdt, dlwdt, zr, trdt, vaprdt, gmcdt, zs, tsdt, vlcdt, vicdt, matdt, totflo, totlat, concdt, saltdt, tmpday, humday, vapcdt[1], winday, nclst, windsub, tempsub, tsurface, swdown, swup, lwdown, lwup, evap1, _goshawSave.Melt);
@@ -983,9 +1013,9 @@ namespace Landis.Extension.ShawDamm
                         Console.WriteLine(" *** less than or equal to residual water content.***");
                         if (_lvlout[1] > 0)
                         {
-                            generalOut.WriteLine();
-                            generalOut.WriteLine(" *** Input soil water content at lower boundary   ***");
-                            generalOut.WriteLine(" *** less than or equal to residual water content.***");
+                            _outputWriters[OutputFile.EntireProfile].WriteLine();
+                            _outputWriters[OutputFile.EntireProfile].WriteLine(" *** Input soil water content at lower boundary   ***");
+                            _outputWriters[OutputFile.EntireProfile].WriteLine(" *** less than or equal to residual water content.***");
                         }
 
                         return false;
@@ -1235,41 +1265,42 @@ namespace Landis.Extension.ShawDamm
 
             if (level[1] >= 2 && _lvlout[1] > 0)
             {
-                generalOut.WriteLine($"HFLUX (W/M2), VFLUX (KG/S): {hflux} {vflux}");
-                generalOut.WriteLine(" VAPOR FLUXES (KG/S)");
+                _outputWriters[OutputFile.EntireProfile].WriteLine($"HFLUX (W/M2), VFLUX (KG/S): {hflux} {vflux}");
+                _outputWriters[OutputFile.EntireProfile].WriteLine(" VAPOR FLUXES (KG/S)");
 
                 for (var j = 1; j <= ns - 1; ++j)
                 {
-                    generalOut.Write($"{qsv[j],15:G6}");
-                    if (j % 5 == 0 || j == ns - 1) generalOut.WriteLine();
+                    _outputWriters[OutputFile.EntireProfile].Write($"{qsv[j],15:G6}");
+                    if (j % 5 == 0 || j == ns - 1) _outputWriters[OutputFile.EntireProfile].WriteLine();
                 }
-                generalOut.WriteLine();
+                _outputWriters[OutputFile.EntireProfile].WriteLine();
 
-                generalOut.WriteLine(" LIQUID FLUXES (M/S)");
+                _outputWriters[OutputFile.EntireProfile].WriteLine(" LIQUID FLUXES (M/S)");
 
                 for (var j = 1; j <= ns - 1; ++j)
                 {
-                    generalOut.Write($"{qsl[j],15:G6}");
-                    if (j % 5 == 0 || j == ns - 1) generalOut.WriteLine();
+                    _outputWriters[OutputFile.EntireProfile].Write($"{qsl[j],15:G6}");
+                    if (j % 5 == 0 || j == ns - 1) _outputWriters[OutputFile.EntireProfile].WriteLine();
                 }
-                generalOut.WriteLine();
+                _outputWriters[OutputFile.EntireProfile].WriteLine();
 
-                generalOut.WriteLine(" JACOBIAN MATRIX");
+                _outputWriters[OutputFile.EntireProfile].WriteLine(" JACOBIAN MATRIX");
                 for (var k = 1; k <= n; ++k)
-                    generalOut.WriteLine($"{_matrix.A1[k],18:G10} {_matrix.B1[k],18:G10} {_matrix.C1[k],18:G10} {_matrix.D1[k],18:G10}");
-                //generalOut.WriteLine($"{_matrix.A1[k],13:G6} {_matrix.B1[k],13:G6} {_matrix.C1[k],13:G6} {_matrix.D1[k],13:G6}");
+                    _outputWriters[OutputFile.EntireProfile].WriteLine($"{_matrix.A1[k],18:G10} {_matrix.B1[k],18:G10} {_matrix.C1[k],18:G10} {_matrix.D1[k],18:G10}");
+                //_outputWriters[OutputFile.EntireProfile].WriteLine($"{_matrix.A1[k],13:G6} {_matrix.B1[k],13:G6} {_matrix.C1[k],13:G6} {_matrix.D1[k],13:G6}");
 
                 //if (ishiter == 348)
                 //    return true;
 
-                generalOut.WriteLine();
-                generalOut.WriteLine($" VALUES FOR ENERGY BALANCE ITERATION {iter}");
+                _outputWriters[OutputFile.EntireProfile].WriteLine();
+                _outputWriters[OutputFile.EntireProfile].WriteLine($" VALUES FOR ENERGY BALANCE ITERATION {iter}");
             }
             //-----------------------------------------------------------------------
 
             // line 761
             //**** SOLVE THE ENERGY BALANCE MATRIX
             Tdma(n, _matrix.A1, _matrix.B1, _matrix.C1, _matrix.D1, delta);
+
             //
             //**** SORT OUT THE SOLUTION OF THE MATRIX INTO THE PROPER MATERIALS
             materl = 2;
@@ -1302,7 +1333,7 @@ namespace Landis.Extension.ShawDamm
                     delnrg[n] = delta[n];
                     tcdt[i] = tcdt[i] - delta[n];
                     if (level[1] >= 2 && _lvlout[1] > 0)
-                        generalOut.WriteLine($"{delta[n],18:G10} {tcdt[i],18:G10} {vapcdt[i],18:G10} {wcandt[i],18:G10}");
+                        _outputWriters[OutputFile.EntireProfile].WriteLine($"{delta[n],18:G10} {tcdt[i],18:G10} {vapcdt[i],18:G10} {wcandt[i],18:G10}");
                     n = n + 1;
                 label220:;
                 }
@@ -1373,7 +1404,7 @@ namespace Landis.Extension.ShawDamm
                         }
                     }
                     if (level[1] >= 2 && _lvlout[1] > 0)
-                        generalOut.WriteLine($"{delta[n],18:G10} {tspdt[i],18:G10} {dlwdt[i],18:G10} {dzsp[i],18:G10}");
+                        _outputWriters[OutputFile.EntireProfile].WriteLine($"{delta[n],18:G10} {tspdt[i],18:G10} {dlwdt[i],18:G10} {dzsp[i],18:G10}");
                     n = n + 1;
                 label230:;
                 }
@@ -1404,7 +1435,7 @@ namespace Landis.Extension.ShawDamm
                     delnrg[n] = delta[n];
                     trdt[i] = trdt[i] - delta[n];
                     if (level[1] >= 2 && _lvlout[1] > 0)
-                        generalOut.WriteLine($"{delta[n],18:G10} {trdt[i],18:G10} {vaprdt[i],18:G10} {gmcdt[i],18:G10}");
+                        _outputWriters[OutputFile.EntireProfile].WriteLine($"{delta[n],18:G10} {trdt[i],18:G10} {vaprdt[i],18:G10} {gmcdt[i],18:G10}");
                     n = n + 1;
                 label240:;
                 }
@@ -1466,8 +1497,8 @@ namespace Landis.Extension.ShawDamm
                 //
                 if (level[1] >= 2 && _lvlout[1] > 0)
                 {
-                    generalOut.WriteLine($"{delta[n],18:G10} {tsdt[i],18:G10} {vlcdt[i],18:G10} {vicdt[i],18:G10} {matdt[i],18:G10}");
-                    generalOut.WriteLine($"{concdt[1][i],18:G10} {icesdt[i],18:G10}");
+                    _outputWriters[OutputFile.EntireProfile].WriteLine($"{delta[n],18:G10} {tsdt[i],18:G10} {vlcdt[i],18:G10} {vicdt[i],18:G10} {matdt[i],18:G10}");
+                    _outputWriters[OutputFile.EntireProfile].WriteLine($"{concdt[1][i],18:G10} {icesdt[i],18:G10}");
                 }
                 n = n + 1;
             label250:;
@@ -1524,7 +1555,7 @@ namespace Landis.Extension.ShawDamm
             //-----------------------------------------------------------------------
             if (level[1] >= 1 && _lvlout[1] > 0)
             {
-                generalOut.WriteLine($" ENERGY BALANCE AT ITER = {iter} {julian} {hour} {ntimes} {ndt}");
+                _outputWriters[OutputFile.EntireProfile].WriteLine($" ENERGY BALANCE AT ITER = {iter} {julian} {hour} {ntimes} {ndt}");
                 Output(nplant, nc, ncmax, nsp, nr, ns, lvlout, 1, inph2o, julian, hour, year, 1, zc, tcdt, tlcdt, vapcdt, wcandt, rootxt, rhosp, zsp, tspdt, dlwdt, zr, trdt, vaprdt, gmcdt, zs, tsdt, vlcdt, vicdt, matdt, totflo, totlat, concdt, saltdt, ta, hum, vapa, wind, nclst, windsub, tempsub, tsurface, swdown, swup, lwdown, lwup, evap1, _goshawSave.Melt);
                 //XOUT>    MATDT,TOTFLO,TOTLAT,CONCDT,SALTDT,TA,HUM,VAPA,WIND)
             }
@@ -1576,39 +1607,40 @@ namespace Landis.Extension.ShawDamm
             //-----------------------------------------------------------------------
             if (level[1] >= 2 && _lvlout[1] > 0)
             {
-                generalOut.WriteLine($"HFLUX (W/M2), VFLUX (KG/S): {hflux} {vflux}");
-                generalOut.WriteLine(" VAPOR FLUXES (KG/S)");
-                //generalOut.WriteLine(string.Concat(Enumerable.Range(1, ns - 1).Select(j => $"{qsv[j],15:G6}")));
+                _outputWriters[OutputFile.EntireProfile].WriteLine($"HFLUX (W/M2), VFLUX (KG/S): {hflux} {vflux}");
+                _outputWriters[OutputFile.EntireProfile].WriteLine(" VAPOR FLUXES (KG/S)");
+                //_outputWriters[OutputFile.EntireProfile].WriteLine(string.Concat(Enumerable.Range(1, ns - 1).Select(j => $"{qsv[j],15:G6}")));
                 for (var j = 1; j <= ns - 1; ++j)
                 {
-                    generalOut.Write($"{qsv[j],15:G6}");
-                    if (j % 5 == 0 || j == ns - 1) generalOut.WriteLine();
+                    _outputWriters[OutputFile.EntireProfile].Write($"{qsv[j],15:G6}");
+                    if (j % 5 == 0 || j == ns - 1) _outputWriters[OutputFile.EntireProfile].WriteLine();
                 }
-                generalOut.WriteLine();
+                _outputWriters[OutputFile.EntireProfile].WriteLine();
 
-                generalOut.WriteLine(" LIQUID FLUXES (M/S)");
-                //generalOut.WriteLine(string.Concat(Enumerable.Range(1, ns - 1).Select(j => $"{qsl[j],15:G6}")));
+                _outputWriters[OutputFile.EntireProfile].WriteLine(" LIQUID FLUXES (M/S)");
+                //_outputWriters[OutputFile.EntireProfile].WriteLine(string.Concat(Enumerable.Range(1, ns - 1).Select(j => $"{qsl[j],15:G6}")));
                 for (var j = 1; j <= ns - 1; ++j)
                 {
-                    generalOut.Write($"{qsl[j],15:G6}");
-                    if (j % 5 == 0 || j == ns - 1) generalOut.WriteLine();
+                    _outputWriters[OutputFile.EntireProfile].Write($"{qsl[j],15:G6}");
+                    if (j % 5 == 0 || j == ns - 1) _outputWriters[OutputFile.EntireProfile].WriteLine();
                 }
-                generalOut.WriteLine();
+                _outputWriters[OutputFile.EntireProfile].WriteLine();
 
-                generalOut.WriteLine(" JACOBIAN MATRIX");
+                _outputWriters[OutputFile.EntireProfile].WriteLine(" JACOBIAN MATRIX");
                 for (var k = 1; k <= n; ++k)
-                    generalOut.WriteLine($"{_matrix.A2[k],18:G10} {_matrix.B2[k],18:G10} {_matrix.C2[k],18:G10} {_matrix.D2[k],18:G10}");
+                    _outputWriters[OutputFile.EntireProfile].WriteLine($"{_matrix.A2[k],18:G10} {_matrix.B2[k],18:G10} {_matrix.C2[k],18:G10} {_matrix.D2[k],18:G10}");
 
                 //if (ishiter == 348)
                 //    return true;
 
-                generalOut.WriteLine("");
-                generalOut.WriteLine($" VALUES FOR WATER BALANCE ITERATION {iter}");
+                _outputWriters[OutputFile.EntireProfile].WriteLine("");
+                _outputWriters[OutputFile.EntireProfile].WriteLine($" VALUES FOR WATER BALANCE ITERATION {iter}");
             }
             //-----------------------------------------------------------------------
             //
             //**** SOLVE THE WATER BALANCE MATRIX
             Tdma(n, _matrix.A2, _matrix.B2, _matrix.C2, _matrix.D2, delta);
+            
             //
             //**** SORT OUT THE SOLUTION OF THE MATRIX INTO THE PROPER MATERIALS
             materl = 2;
@@ -1632,7 +1664,7 @@ namespace Landis.Extension.ShawDamm
                     delwtr[n] = delta[n];
                     vapcdt[i] = vapcdt[i] - delta[n];
                     if (level[1] >= 2 && _lvlout[1] > 0)
-                        generalOut.WriteLine($"{delta[n],18:G10} {vapcdt[i],18:G10} {tcdt[i],18:G10} {wcandt[i],18:G10}");
+                        _outputWriters[OutputFile.EntireProfile].WriteLine($"{delta[n],18:G10} {vapcdt[i],18:G10} {tcdt[i],18:G10} {wcandt[i],18:G10}");
                     n = n + 1;
                 label310:;
                 }
@@ -1661,7 +1693,7 @@ namespace Landis.Extension.ShawDamm
                     delwtr[n] = delta[n];
                     vaprdt[i] = vaprdt[i] - delta[n];
                     if (level[1] >= 2 && _lvlout[1] > 0)
-                        generalOut.WriteLine($"{delta[n],18:G10} {vaprdt[i],18:G10} {trdt[i],18:G10} {gmcdt[i],18:G10}");
+                        _outputWriters[OutputFile.EntireProfile].WriteLine($"{delta[n],18:G10} {vaprdt[i],18:G10} {trdt[i],18:G10} {gmcdt[i],18:G10}");
                     n = n + 1;
                 label320:;
                 }
@@ -1739,7 +1771,7 @@ namespace Landis.Extension.ShawDamm
                 dldm = 0.0;
                 Matvl2(i, ref matdt[i], ref vlcdt[i], ref dldm);
                 if (level[1] >= 2 && _lvlout[1] > 0)
-                    generalOut.WriteLine($"{delta[n],18:G10} {matdt[i],18:G10} {vlcdt[i],18:G10} {vicdt[i],18:G10}");
+                    _outputWriters[OutputFile.EntireProfile].WriteLine($"{delta[n],18:G10} {matdt[i],18:G10} {vlcdt[i],18:G10} {vicdt[i],18:G10}");
                 n = n + 1;
             label330:;
             }
@@ -1772,10 +1804,10 @@ namespace Landis.Extension.ShawDamm
 
             if (level[1] >= 1 && _lvlout[1] > 0)
             {
-                generalOut.WriteLine($" WATER BALANCE AT ITERWB = {iter} {julian} {hour} {ntimes} {ndt}");
+                _outputWriters[OutputFile.EntireProfile].WriteLine($" WATER BALANCE AT ITERWB = {iter} {julian} {hour} {ntimes} {ndt}");
                 Output(nplant, nc, ncmax, nsp, nr, ns, lvlout, 1, inph2o, julian, hour, year, 1, zc, tcdt, tlcdt, vapcdt, wcandt, rootxt, rhosp, zsp, tspdt, dlwdt, zr, trdt, vaprdt, gmcdt, zs, tsdt, vlcdt, vicdt, matdt, totflo, totlat, concdt, saltdt, ta, hum, vapa, wind, nclst, windsub, tempsub, tsurface, swdown, swup, lwdown, lwup, evap1, _goshawSave.Melt);
                 //XOUT>    MATDT,TOTFLO,TOTLAT,CONCDT,SALTDT,TA,HUM,VAPA,WIND)
-                generalOut.WriteLine($" ITERATION = {iter} ENERGY FLAGS = {ieflag} WATER FLAGS = {iwflag}");
+                _outputWriters[OutputFile.EntireProfile].WriteLine($" ITERATION = {iter} ENERGY FLAGS = {ieflag} WATER FLAGS = {iwflag}");
             }
         //-----------------------------------------------------------------------
 
@@ -1804,10 +1836,10 @@ namespace Landis.Extension.ShawDamm
 
                 if (_lvlout[1] > 0)
                 {
-                    generalOut.WriteLine($" CONVERGENCE PROBLEMS AT : {julian} {hour} {year} {ntimes}");
+                    _outputWriters[OutputFile.EntireProfile].WriteLine($" CONVERGENCE PROBLEMS AT : {julian} {hour} {year} {ntimes}");
 
-                    if (ieflag > 0) generalOut.WriteLine(" ENERGY BALANCE WILL NOT CONVERGE");
-                    if (iwflag > 0) generalOut.WriteLine(" WATER BALANCE WILL NOT CONVERGE");
+                    if (ieflag > 0) _outputWriters[OutputFile.EntireProfile].WriteLine(" ENERGY BALANCE WILL NOT CONVERGE");
+                    if (iwflag > 0) _outputWriters[OutputFile.EntireProfile].WriteLine(" WATER BALANCE WILL NOT CONVERGE");
                 }
                 iter = 0;
 
@@ -1815,6 +1847,13 @@ namespace Landis.Extension.ShawDamm
                 {
                     Console.WriteLine(" ***  Debugging limit reached ***");
                     return false;
+                }
+
+                // JM: backup and drop out of the solve if pcandt is weird
+                if (pcandt.Max() > 0.001)
+                {
+                    Backup(ref ns, ref nr, ref nsp, ref nc, ref nplant, ref _slparm.Nsalt, ices, icesdt, ts, tsdt, mat, matdt, conc, concdt, vlc, vlcdt, vic, vicdt, salt, saltdt, tr, trdt, vapr, vaprdt, gmc, gmcdt, tc, tcdt, tlc, tlcdt, vapc, vapcdt, wcan, wcandt, pcan, pcandt, tsp, tspdt, dlw, dlwdt, icesp, icespt);
+                    convergenceIssue = true;
                 }
             }
             //
@@ -1829,7 +1868,7 @@ namespace Landis.Extension.ShawDamm
             {
                 for (var i = 1; i <= ns; ++i)
                 {
-                    generalOut.WriteLine($"{hour,5:D}{zs[i],5:F2}{tsdt[i],8:F3}{vlcdt[i],6:F3}{vicdt[i],6:F3}{matdt[i],8:F2}{concdt[1][i],14:E4}{ta,8:F3}{tadt,8:F3}{saltdt[1][i],14:E4}");
+                    _outputWriters[OutputFile.EntireProfile].WriteLine($"{hour,5:D}{zs[i],5:F2}{tsdt[i],8:F3}{vlcdt[i],6:F3}{vicdt[i],6:F3}{matdt[i],8:F2}{concdt[1][i],14:E4}{ta,8:F3}{tadt,8:F3}{saltdt[1][i],14:E4}");
                 }
             }
             //-----------------------------------------------------------------------
@@ -1866,8 +1905,8 @@ namespace Landis.Extension.ShawDamm
 
                 if (_lvlout[1] > 0)
                 {
-                    generalOut.WriteLine($" CONVERGENCE PROBLEMS AT : {julian} {hour} {year} {ntimes}");
-                    generalOut.WriteLine(" SOLUTES CAUSING CONVERGENCE PROBLEMS");
+                    _outputWriters[OutputFile.EntireProfile].WriteLine($" CONVERGENCE PROBLEMS AT : {julian} {hour} {year} {ntimes}");
+                    _outputWriters[OutputFile.EntireProfile].WriteLine(" SOLUTES CAUSING CONVERGENCE PROBLEMS");
                 }
 
                 if (level[1] == 1 || level[1] == 2)
@@ -1893,7 +1932,7 @@ namespace Landis.Extension.ShawDamm
             //     SUM THE NECESSARY FLUXES OCCURRING OVER THE TIME STEP
             Sumdt(ref nc, ref nplant, ref nsp, ref nr, ref ns, ref hflux, ref vflux, ref gflux, lwcan, ref lwsnow, lwres, ref lwsoil, lwdown, lwup, swcan, swsnow, swres, ref swsoil, swdown, swup, qvc, qvr, qvsp, qsl, qsv, trnsp, xtract, flolat, ref seep, ref tswsno, ref tlwsno, ref tswcan, ref tlwcan, ref tswres, ref tlwres, ref tswsoi, ref tlwsoi, ref tswdwn, ref tlwdwn, ref tswup, ref tlwup, ref thflux, ref tgflux, ref evap1, ref etsum, ref tseep, rootxt, totflo, totlat, ref ntimes, ref topsno, tqvsp);
             //
-            if (ntimes != ndt)
+            if (!convergenceIssue && ntimes != ndt)
             {
                 //        NOT REACHED END OF TIME STEP -- GO BACK THROUGH SUB-TIME-STEP
                 if (ntimes % 2 == 0 && (ieflag + iwflag) == 0)
@@ -1945,7 +1984,7 @@ namespace Landis.Extension.ShawDamm
                 }
                 //xOUT
 
-                Precp(ref nplant, ref nc, ref nsp, ref nr, ref ns, ref ta, ref tadt, ref hum, ref humdt, zc, pintrcp, xangle, clumpng, itype, wcandt, ref wcmax, pcandt, zsp, dzsp, tspdt, bdlw, dlwdt, rhosp, tqvsp, ref topsno, wlag, ref store, ref snowex, zr, trdt, gmcdt, ref gmcmax, rhor, zs, tsdt, vlcdt, vicdt, matdt, totflo, saltdt, concdt, icespt, icesdt, ref rain, ref pond, ref runoff, ref evap1, ref _goshawSave.Melt, ref pondmx, ref isnotmp, ref snotmp, ref snoden, ref dirres, ref slope);
+                Precp(ref nplant, ref nc, ref nsp, ref nr, ref ns, ref ta, ref tadt, ref hum, ref humdt, zc, pintrcp, xangle, clumpng, itype, wcandt, ref wcmax, pcandt, zsp, dzsp, tspdt, bdlw, dlwdt, rhosp, tqvsp, ref topsno, wlag, ref store, ref snowex, zr, trdt, gmcdt, ref gmcmax, rhor, zs, tsdt, vlcdt, vicdt, matdt, totflo, totlat, saltdt, concdt, icespt, icesdt, ref rain, ref pond, ref runoff, ref evap1, ref _goshawSave.Melt, ref pondmx, ref isnotmp, ref snotmp, ref snoden, ref dirres, ref slope);
 
                 // JM: calculate snow heat capacity [J/m3/K] and thermal conductivity [W/m/K]
                 // JM: also calculate snow density [kg/m3]
@@ -2025,7 +2064,7 @@ namespace Landis.Extension.ShawDamm
                 //        PRINT OUT WATER BALANCE FOR THIS HOUR
 
                 // JM: call Wbalnc regardless of lvlout[11] to calculate values, even if they don't get logged
-                Wbalnc(ref nplant, ref nc, ref nsp, ref nr, ref ns, ref lvlout[11], ref julian, ref hour, ref year, itype, 1, zc, bwcan, wcandt, bpcan, pcandt, bvapc, vapcdt, rhosp, dzsp, dlwdt, wlag, ref store, zr, bgmc, gmcdt, bvapr, vaprdt, rhor, zs, bvlc, vlcdt, bvic, vicdt, totflo, ref precip, ref runoff, ref pond, ref evap1, ref _goshawSave.Melt, ref etsum, results);
+                Wbalnc(ref nplant, ref nc, ref nsp, ref nr, ref ns, ref lvlout[11], ref julian, ref hour, ref year, itype, 1, zc, bwcan, wcandt, bpcan, pcandt, bvapc, vapcdt, rhosp, dzsp, dlwdt, wlag, ref store, zr, bgmc, gmcdt, bvapr, vaprdt, rhor, zs, bvlc, vlcdt, bvic, vicdt, totflo, ref precip, ref runoff, ref pond, ref evap1, ref _goshawSave.Melt, ref etsum, totlat, results);
                 //
                 //        PRINT OUT ENERGY BALANCE FOR THIS HOUR
                 if (lvlout[10] != 0) Energy(ref nsplst, ref lvlout[10], ref julian, ref hour, ref year, _outputInital, ref dtime, ref tswsno, ref tlwsno, ref tswcan, ref tlwcan, ref tswres, ref tlwres, ref tswsoi, ref tlwsoi, ref tswdwn, ref tlwdwn, ref tswup, ref tlwup, ref thflux, ref tgflux, ref evap1);
@@ -2044,7 +2083,7 @@ namespace Landis.Extension.ShawDamm
                     if (lvlout[20] != 0 && _goshawSave.Nprint % lvlout[20] == 0)
                     {
                         if (_lvlout[2] > 0)
-                            generalOut.WriteLine($"+ Completed :      {julian,4:D}   {hour,4:D}   {year,4:D}     {_goshawSave.Minstp,4:D}      {_goshawSave.Maxstp,4:D}");
+                            _outputWriters[OutputFile.EntireProfile].WriteLine($"+ Completed :      {julian,4:D}   {hour,4:D}   {year,4:D}     {_goshawSave.Minstp,4:D}      {_goshawSave.Maxstp,4:D}");
                         Console.WriteLine($"+ Completed :      {julian,4:D}   {hour,4:D}   {year,4:D}     {_goshawSave.Minstp,4:D}      {_goshawSave.Maxstp,4:D}");
                         _goshawSave.Nprint = 0;
                         _goshawSave.Maxstp = 0;
@@ -2260,6 +2299,9 @@ namespace Landis.Extension.ShawDamm
             {
                 //        CANOPY HAS NOT EMERGED OR IS COVERED WITH SNOW - EXIT OUT
                 nc = 0;
+                //        SET NCMAX FOR CANOPY LAYER OUTPUT
+                ncmax = nc;
+                if (Math.Abs(mzcinp) > 0) ncmax = Math.Abs(mzcinp);
                 goto label80;
             }
             //
@@ -5191,7 +5233,6 @@ namespace Landis.Extension.ShawDamm
                             //                 CHECK IF PLANT HAS ANY LEAF AREA IN LAYER
                             if (_clayrs.Canlai[j][i] <= 0.0) goto label12;
                             rstom[i] = 0.0;
-                            _leaftSave.Etcan[j][i] = 0.0;
                             if (pcan[j] > 0.0)
                             {
                                 //***                 INTERCEPTED PRECIP AVAILABLE FOR EVAPORATION
@@ -5595,6 +5636,15 @@ namespace Landis.Extension.ShawDamm
                         //              SUM TRANSPIRATION FROM ENTIRE TRANSPIRING CANOPY
                         trnsp[nplant + 1] = trnsp[nplant + 1] + fractn * sumet;
                     }
+                    else
+                    {
+                        //              PLANT IS NOT TRANSPIRING - SET ETCAN AND INIT(J)
+                        _leaftSave.Init[j] = 1;
+                        for (var i = 1; i <= nc; ++i)
+                        {
+                            _leaftSave.Etcan[j][i] = 0.0;
+                        }
+                    }
                     //
                 }
                 else
@@ -5762,6 +5812,9 @@ namespace Landis.Extension.ShawDamm
                     {
                         fsolar = swdown * (1000.0 + stomate[j][1]) / (1000.0 * (swdown + stomate[j][1]));
                     }
+                    //              CATCH SCENARIO FOR SWDOWN = 0.0
+                    if (fsolar < 0.0001)
+                        fsolar = 0.0001;
                     else
                     {
                         //              DO NOT ALLOW FACTOR TO GO ABOVE 1.0
@@ -6789,11 +6842,11 @@ namespace Landis.Extension.ShawDamm
             {
                 //        EN3 BECOMES INFINITELY LARGE WHEN CLAY IS ZERO
                 //        (SMALLEST CLAY CONTENT IN DATA FROM CASS ET. AL. WAS 2%)
-                en3 = _slparm.Soilwrc[i][2] * (1 + 2.6 / Math.Sqrt(0.02));
+                en3 = _slparm.Soilwrc[i][2] * (1.0 + 2.6 / Math.Sqrt(0.02));
             }
             else
             {
-                en3 = _slparm.Soilwrc[i][2] * (1 + 2.6 / Math.Sqrt(_slparm.Clay[i]));
+                en3 = _slparm.Soilwrc[i][2] * (1.0 + 2.6 / Math.Sqrt(_slparm.Clay[i]));
             }
             var expon = -Math.Pow((en3 * vlc[i] / _slparm.Soilwrc[i][2]), en5);
             //
@@ -7306,7 +7359,7 @@ namespace Landis.Extension.ShawDamm
             //
             //***********************************************************************
             var mat1 = 0.0;
-            var generalOut = _outputWriters[OutputFile.EntireProfile];
+            //var generalOut = _outputWriters[OutputFile.EntireProfile];
             var dummy = 0.0;
 
             //     ITERATE TO FIND THE MAXIMUM WATER CONTENT FROM THE TOTAL, MATRIC
@@ -7329,7 +7382,14 @@ namespace Landis.Extension.ShawDamm
             var delta = 0.0;
             var vlc2 = 0.0;
 
-        label5:;
+            if (ts[i] >= 0.0)
+            {
+                //       NOT FROZEN - SET MAX POSSIBLE VLC TO SATURATION; SKIP ITERATIONS
+                vlc2 = _slparm.Soilwrc[i][2];
+                goto label30;
+            }
+
+            label5:;
             tmp = ts[i] + 273.16;
             totpot = Constn.Lf * ts[i] / tmp / Constn.G;
             Matvl2(i, ref totpot, ref vlc1, ref dummy);
@@ -7375,19 +7435,19 @@ namespace Landis.Extension.ShawDamm
             if (Math.Abs(delta) < .00001) goto label30;
             iter = iter + 1;
             if (iconv > 0 && _lvlout[1] > 0) // write(21, *)iter,osmpot,mat1,vlc1,deriv,1 / dldm,error;
-                generalOut.WriteLine($"{iter} {osmpot} {mat1} {vlc1} {deriv} {1.0 / dldm} {error}");
+                _outputWriters[OutputFile.EntireProfile].WriteLine($"{iter} {osmpot} {mat1} {vlc1} {deriv} {1.0 / dldm} {error}");
             if (iter > 30)
             {
                 iconv = iconv + 1;
                 // write(21,100)
                 if (_lvlout[1] > 0)
                 {
-                    generalOut.WriteLine();
-                    generalOut.WriteLine();
-                    generalOut.WriteLine("*****  PROGRAM WAS STOPPED IN SUBROUTINE FROZEN DUE TO CONVERGENCE PROBLEMS *****");
+                    _outputWriters[OutputFile.EntireProfile].WriteLine();
+                    _outputWriters[OutputFile.EntireProfile].WriteLine();
+                    _outputWriters[OutputFile.EntireProfile].WriteLine("*****  PROGRAM WAS STOPPED IN SUBROUTINE FROZEN DUE TO CONVERGENCE PROBLEMS *****");
 
                     // write(21,*)i,ts(i),vlc(i),vic(i),totpot
-                    generalOut.WriteLine($"{i} {ts[i]} {vlc[i]} {vic[i]} {totpot}");
+                    _outputWriters[OutputFile.EntireProfile].WriteLine($"{i} {ts[i]} {vlc[i]} {vic[i]} {totpot}");
                 }
                 if (iconv == 1) goto label5;
                 Console.WriteLine("*****  PROGRAM WAS STOPPED IN SUBROUTINE FROZEN DUE TO CONVERGENCE PROBLEMS *****");
@@ -7410,6 +7470,14 @@ namespace Landis.Extension.ShawDamm
                 {
                     //           COMPUTE MATRIC POTENTIAL FROM LIQUID WATER CONTENT
                     Matvl1(i, ref mat[i], ref vlc[i], ref dummy);
+                    if (mat[i] + osmpot >= 0.0)
+                    {
+                        //          Temperature may be very close to zero such that
+                        //          numerical precision resulted in zero potential -
+                        //          Recompute to align with temperature and avoid DLDM=0.0
+                        mat[i] = totpot - osmpot;
+                        if (mat[i] >= 0.0) mat[i] = 0.0;
+                    }
                 }
                 else
                 {
@@ -8525,7 +8593,7 @@ namespace Landis.Extension.ShawDamm
         private void Precp(ref int nplant, ref int nc, ref int nsp, ref int nr, ref int ns, ref double ta, ref double tadt, ref double hum, ref double humdt, double[] zc,
             double[] pintrcp, double[] xangle, double[] clumpng, int[] itype, double[] wcandt, ref double wcmax, double[] pcandt, double[] zsp, double[] dzsp, double[] tspdt,
             double[] dlw, double[] dlwdt, double[] rhosp, double[] tqvsp, ref double topsno, double[] wlag, ref double store, ref double snowex, double[] zr, double[] trdt,
-            double[] gmcdt, ref double gmcmax, double[] rhor, double[] zs, double[] tsdt, double[] vlcdt, double[] vicdt, double[] matdt, double[] totflo, double[][] saltdt,
+            double[] gmcdt, ref double gmcmax, double[] rhor, double[] zs, double[] tsdt, double[] vlcdt, double[] vicdt, double[] matdt, double[] totflo, double[] totlat, double[][] saltdt,
             double[][] concdt, int[] icespt, int[] icesdt, ref double rain, ref double pond, ref double runoff, ref double evap1, ref double melt, ref double pondmx, ref int isnotmp,
             ref double snotmp, ref double snoden, ref double dirres, ref double slope)
         {
@@ -8618,7 +8686,7 @@ namespace Landis.Extension.ShawDamm
                 pond = 0.0;
                 //
                 //        RAINFALL INFILTRATION INTO THE SOIL
-                Rainsl(ref ns, ref train, ref rain, zs, tsdt, vlcdt, vicdt, icesdt, matdt, totflo, saltdt, concdt, ref pond, ref pondmx);
+                Rainsl(ref ns, ref train, ref rain, zs, tsdt, vlcdt, vicdt, icesdt, matdt, totflo, totlat, saltdt, concdt, ref pond, ref pondmx, ref slope);
                 //
                 if (snowex > 0.0)
                 {
@@ -8759,6 +8827,7 @@ namespace Landis.Extension.ShawDamm
                     densty = 50.0 + 1.7 * (Math.Pow((twbulb + 15.0), 1.5));
                 }
             }
+
             depth = snow * Constn.Rhol / densty;
             //
             if (nc > 0)
@@ -8911,7 +8980,7 @@ namespace Landis.Extension.ShawDamm
                     for (var i = 2; i <= nsp + 1; ++i)
                     {
                         zsp[i] = zsp[i] + down;
-                    label10:;
+                        label10:;
                     }
                     return;
                 }
@@ -9018,23 +9087,49 @@ namespace Landis.Extension.ShawDamm
             scout = 0.0;
             //
             //     ADJUST THE DENSITY FOR VAPOR FLUX
-            //     (THICKNESS OF LAYER IS ADJUSTED FOR SURFACE LAYER)
+            //     THICKNESS IS ADJUSTED FOR SURFACE LAYERS; OTHERS IS DENSITY
             //
-            change = (topsno - tqvsp[1]) / rhosp[1];
-            dzsp[1] = dzsp[1] + change;
-            if (dzsp[1] <= 0.0 && nsp == 1)
+            nl = nsp;
+            var dzchange = (topsno - tqvsp[1]) / rhosp[1];
+            for (i = 1; i <= nsp; ++i)
             {
-                //        SNOWPACK IS LOST TO SUBLIMATION -- ADJUST TOPSNO AND EVAP1 FOR
-                //        THE WATER BALANCE TO CLOSE AND RETURN TO CALLING SUBROUTINE
-                topsno = topsno - dzsp[1] * rhosp[1];
-                evap1 = evap1 - dzsp[1] * rhosp[1] / Constn.Rhol;
-                nsp = 0;
-                return;
-            }
-            for (i = 2; i <= nsp; ++i)
-            {
-                change = (tqvsp[i - 1] - tqvsp[i]) / dzsp[i];
-                rhosp[i] = rhosp[i] + change;
+                if (i == 1 || dzchange != 0.0)
+                {
+                    // THIS IS SURFACE LAYER - CHANGE THICKNESS
+                    dzsp[i] = dzsp[i] + dzchange;
+                    if (dzsp[i] <= 0.0)
+                    {
+                        // LAYER IS GONE 
+                        if (i < nsp)
+                        {
+                            // CASCADE EXCESS SURFACE SUBLIMATION TO SUBSEQUENT LAYER
+                            excess = dzsp[i] * rhosp[i] + dlw[i] * Constn.Rhol;
+                            dzchange = (excess + tqvsp[i] - tqvsp[i + 1]) / rhosp[i + 1];
+                            dzsp[i] = 0.0;
+                            nl = nl - 1;
+                        }
+                        else
+                        {
+                            //        SNOW IS LOST TO SUBLIMATION - ADJUST TOPSNO AND EVAP1 FOR
+                            //        WATER BALANCE CLOSURE AND RETURN TO CALLING SUBROUTINE
+                            topsno = topsno - dzsp[i] * rhosp[i] + dlw[i] * Constn.Rhol;
+                            evap1 = evap1 - (dzsp[i] * rhosp[i] + dlw[i] * Constn.Rhol) / Constn.Rhol;
+                            nsp = 0;
+                            return;
+                        }
+                    }
+                    else
+                    {
+                        // SURFACE SUBLIMATION SATISFIED TO SURFACE LAYERS
+                        dzchange = 0.0;
+                    }
+                }
+                else
+                {
+                    // NON-SURFACE LAYER - ADJUST DENSITY
+                    change = (tqvsp[i - 1] - tqvsp[i]) / dzsp[i];
+                    rhosp[i] = rhosp[i] + change;
+                }
             label10:;
             }
             //
@@ -9044,90 +9139,93 @@ namespace Landis.Extension.ShawDamm
             //                BY ABOVE LAYERS HAD THERE BEEN ENOUGH ICE IN THE LAYER
             //                FOR ALL THE ENERGY ABSORBED.  (FOR THE FIRST LAYER,
             //                THIS TERM INCLUDES THE ENERGY TRANSFERRED BY RAIN.)
-            nl = nsp;
             above = rain;
             excess = rain * (Constn.Cl * train + Constn.Lf) / Constn.Lf;
             //
             for (i = 1; i <= nsp; ++i)
             {
-                if (icespt[i] == 0)
+                // CHECK IF LAYER WAS LOST - PERHAPS TO SUBLIMATION
+                if (dzsp[i] > 0.0)
                 {
-                    //
-                    //        TEMPERATURE IS UNKNOWN--SOME EXCESS LIQUID-WATER FROM
-                    //        THE ABOVE LAYER MUST BE FROZEN.
-                    //
-                    if (excess != 0.0)
+                    if (icespt[i] == 0)
                     {
-                        //           COMPUTE AMOUNT TO BE FROZE IN ORDER TO RAISE THE TEMPERATURE
-                        //           TO ZERO DEGREES CELSIUS. (USE SPECIFIC HEAT OF ICE, CI)
-                        wel = rhosp[i] * dzsp[i] / Constn.Rhol;
-                        freeze = -tspdt[i] * wel * Constn.Ci / Constn.Lf;
-                        if (excess > freeze)
+                        //
+                        //        TEMPERATURE IS UNKNOWN--SOME EXCESS LIQUID-WATER FROM
+                        //        THE ABOVE LAYER MUST BE FROZEN.
+                        //
+                        if (excess != 0.0)
                         {
-                            //              EXCESS EXCEEDS REFREEZE.
-                            tspdt[i] = 0.0;
-                            wel = wel + freeze;
-                            rhosp[i] = Constn.Rhol * wel / dzsp[i];
-                            excess = excess - freeze;
-                            above = above - freeze;
-                            icespt[i] = 1;
-                        }
-                        else
-                        {
-                            //              EXCESS IS ALL FROZEN IN THIS LAYER.
-                            tspdt[i] = tspdt[i] + (excess * Constn.Lf * Constn.Rhol) / (Constn.Ci * rhosp[i] * dzsp[i]);
-                            wel = wel + excess;
-                            rhosp[i] = Constn.Rhol * wel / dzsp[i];
-                            above = above - excess;
-                            excess = 0.0;
+                            //           COMPUTE AMOUNT TO BE FROZE IN ORDER TO RAISE THE TEMPERATURE
+                            //           TO ZERO DEGREES CELSIUS. (USE SPECIFIC HEAT OF ICE, CI)
+                            wel = rhosp[i] * dzsp[i] / Constn.Rhol;
+                            freeze = -tspdt[i] * wel * Constn.Ci / Constn.Lf;
+                            if (excess > freeze)
+                            {
+                                //              EXCESS EXCEEDS REFREEZE.
+                                tspdt[i] = 0.0;
+                                wel = wel + freeze;
+                                rhosp[i] = Constn.Rhol * wel / dzsp[i];
+                                excess = excess - freeze;
+                                above = above - freeze;
+                                icespt[i] = 1;
+                            }
+                            else
+                            {
+                                //              EXCESS IS ALL FROZEN IN THIS LAYER.
+                                tspdt[i] = tspdt[i] + (excess * Constn.Lf * Constn.Rhol) / (Constn.Ci * rhosp[i] * dzsp[i]);
+                                wel = wel + excess;
+                                rhosp[i] = Constn.Rhol * wel / dzsp[i];
+                                above = above - excess;
+                                excess = 0.0;
+                            }
                         }
                     }
-                }
-                //
-                dlwdt[i] = dlwdt[i] + excess;
-                change = dlwdt[i] - dlw[i] - above;
-                //
-                if (Math.Abs(change) < 0.0000001)
-                {
-                    //        THIS IS BEYOND PRECISION OF COMPUTER -- ASSUME ZERO
-                    above = 0.0;
-                    excess = 0.0;
-                }
-                else
-                {
-                    if (change <= 0.0)
+                    //
+                    dlwdt[i] = dlwdt[i] + excess;
+                    change = dlwdt[i] - dlw[i] - above;
+                    //
+                    if (Math.Abs(change) < 0.0000001)
                     {
-                        //           SOME LIQUID-WATER IS FROZEN. ADD TO ICE CONTENT OF LAYER.
-                        wel = rhosp[i] * dzsp[i] / Constn.Rhol;
-                        wel = wel - change;
-                        rhosp[i] = Constn.Rhol * wel / dzsp[i];
+                        //        THIS IS BEYOND PRECISION OF COMPUTER -- ASSUME ZERO
                         above = 0.0;
                         excess = 0.0;
                     }
                     else
                     {
-                        //           MELT HAS OCCURRED,SUBTRACT FROM ICE CONTENT
-                        wel = rhosp[i] * dzsp[i] / Constn.Rhol;
-                        //           IF MELT EXCEEDS ICE CONTENT OF LAYER--LAYER IS GONE.
-                        if (change >= wel)
+                        if (change <= 0.0)
                         {
-                            //              LAYER IS GONE
-                            //              LIQUID-WATER IS ADDED TO THE LAYER BELOW (EXCESS).  THE
-                            //              ICE CONTENT PLUS DLW OF THE LAYER CANNOT BE TAKEN FROM THE
-                            //              NEXT LAYER, BUT IS STILL ADDED TO THE LIQUID-WATER
-                            //              CONTENT OF THE NEXT LAYER (ABOVE).
-                            nl = nl - 1;
-                            above = above + wel + dlw[i];
-                            excess = dlwdt[i];
-                            dzsp[i] = 0.0;
+                            //           SOME LIQUID-WATER IS FROZEN. ADD TO ICE CONTENT OF LAYER.
+                            wel = rhosp[i] * dzsp[i] / Constn.Rhol;
+                            wel = wel - change;
+                            rhosp[i] = Constn.Rhol * wel / dzsp[i];
+                            above = 0.0;
+                            excess = 0.0;
                         }
                         else
                         {
-                            //              LAYER REMAINS
-                            wel = wel - change;
-                            dzsp[i] = Constn.Rhol * wel / rhosp[i];
-                            above = 0.0;
-                            excess = 0.0;
+                            //           MELT HAS OCCURRED,SUBTRACT FROM ICE CONTENT
+                            wel = rhosp[i] * dzsp[i] / Constn.Rhol;
+                            //           IF MELT EXCEEDS ICE CONTENT OF LAYER--LAYER IS GONE.
+                            if (change >= wel)
+                            {
+                                //              LAYER IS GONE
+                                //              LIQUID-WATER IS ADDED TO THE LAYER BELOW (EXCESS).  THE
+                                //              ICE CONTENT PLUS DLW OF THE LAYER CANNOT BE TAKEN FROM THE
+                                //              NEXT LAYER, BUT IS STILL ADDED TO THE LIQUID-WATER
+                                //              CONTENT OF THE NEXT LAYER (ABOVE).
+                                nl = nl - 1;
+                                above = above + wel + dlw[i];
+                                excess = dlwdt[i];
+                                dzsp[i] = 0.0;
+                            }
+                            else
+                            {
+                                //              LAYER REMAINS
+                                wel = wel - change;
+                                dzsp[i] = Constn.Rhol * wel / rhosp[i];      // JWM: non-negative dzsp
+                                above = 0.0;
+                                excess = 0.0;
+                            }
                         }
                     }
                 }
@@ -9146,13 +9244,14 @@ namespace Landis.Extension.ShawDamm
                 Snomlt(nsp, icespt, dzsp, rhosp, tspdt, dlwdt, wlag, ref store, ref scout);
                 return;
             }
+
             //
             //     ELIMINATE LAYERS WHICH ARE GONE.
             if (nl != nsp)
             {
                 for (i = 1; i <= nsp; ++i)
                 {
-                label23:;
+                    label23:;
                     if (dzsp[i] > 0.0) goto label30;
                     //           LAYER GONE. MOVE OTHER LAYERS UP.
                     next = i + 1;
@@ -9164,16 +9263,17 @@ namespace Landis.Extension.ShawDamm
                         tspdt[l] = tspdt[j];
                         dlwdt[l] = dlwdt[j];
                         icespt[l] = icespt[j];
-                    label25:;
+                        label25:;
                     }
                     nsp = nsp - 1;
                     if (nsp == nl) goto label35;
                     goto label23;
-                label30:;
+                    label30:;
                 }
-            label35:;
+                label35:;
                 dlwdt[nsp] = dlwdt[nsp] + above;
             }
+
             //
             //***********************************************************************
             //     CHECK THICKNESS OF EACH LAYER. IF NOT WITHIN SPECIFIED LIMITS,
@@ -9331,7 +9431,7 @@ namespace Landis.Extension.ShawDamm
                 we = we + dzsp[ii] * rhosp[ii] / Constn.Rhol + dlwdt[ii];
             label85:;
             }
-            zsp[nsp + 1] = tdepth;
+            zsp[nsp + 1] = tdepth; 
         }
 
         // line 10055
@@ -9795,7 +9895,7 @@ namespace Landis.Extension.ShawDamm
         }
 
         // line 10450
-        private void Rainsl(ref int ns, ref double train, ref double rain, double[] zs, double[] tsdt, double[] vlcdt, double[] vicdt, int[] icesdt, double[] matdt, double[] totflo, double[][] saltdt, double[][] concdt, ref double pond, ref double pondmx)
+        private void Rainsl(ref int ns, ref double train, ref double rain, double[] zs, double[] tsdt, double[] vlcdt, double[] vicdt, int[] icesdt, double[] matdt, double[] totflo, double[] totlat, double[][] saltdt, double[][] concdt, ref double pond, ref double pondmx, ref double slope)
         {
             //
             //     THIS SUBROUTINE CALCULATES THE INFILTRATION INTO THE SOIL AS WELL
@@ -9808,25 +9908,30 @@ namespace Landis.Extension.ShawDamm
             var satkmx = new double[51];
             var cs = new double[51];
             var matric = new double[51];
-            var infmax = 0.0;
+            var infmax = new double[51];
             var infil = 0.0;
-            var psat = new double[51];
+            var dinfil = 0.0;
             var vlc9 = new double[51];
             var mat9 = new double[51];
             var satk9 = new double[51];
+            var potinf = new double[51];
+            var dtime = new double[51];
+            var xtrlat = new double[51];
+            var xtrmax = 0.0;
+            var flownext = 0.0;
 
             const double psatk = 0.9;
 
             // JM **  I added PSAT as a SAVE since PSAT should be initialized to 0.9 only at compilation, but it is changed later, and Fortran may be treating it as local.
 
+            var nsat = 0;
+            var imax = 0;
             var vlcmax = 0.0;
-            var dtime = 0.0;
             var zstar = 0.0;
             var sumz = 0.0;
             var sumzk = 0.0;
             var satinf = 0.0;
             var i = 0;
-            var potinf = 0.0;
             var dtstar = 0.0;
             var time = 0.0;
             var diminf = 0.0;
@@ -9869,14 +9974,20 @@ namespace Landis.Extension.ShawDamm
                     matric[i] = _slparm.Soilwrc[i][1];
                     vlc9[i] = psatk * _slparm.Soilwrc[i][2];
                 }
+                //        CHECK IF MAX ALLOWABLE WATER CONTENT IS LESS THAN RESIDUAL
+                if (vlc9[i] < _slparm.Soilwrc[i][4]) vlc9[i] = _slparm.Soilwrc[i][4] + psatk * (vlcmax - _slparm.Soilwrc[i][4]);
                 Matvl1(i, ref mat9[i], ref vlc9[i], ref dummy);
-            label10:;
+                //        INTIALIZE EXTRA LATERAL OUTFLOW OCCURRING DURING INFILTRATION
+                xtrlat[i] = 0.0;
+                label10:;
             }
             Soilhk(ns, satkmx, matric, vlcdt, vicdt);
             //
             //     INITIALIZE INFILTRATION PARAMETERS
-            dtime = _timewt.Dt;
+            nsat = ns;
+            dtime[1] = _timewt.Dt;
             infil = 0.0;
+            dinfil = 0.0;
             zstar = 0.0;
             sumz = 0.0;
             sumzk = 0.0;
@@ -9890,40 +10001,48 @@ namespace Landis.Extension.ShawDamm
             if (matdt[1] >= 0.0) goto label40;
             //
             //     CALCULATE THE MAXIMUM INFILTRATION THAT THE FIRST LAYER CAN HOLD
-            infmax = (_rainslSave.Psat[1] * _slparm.Soilwrc[1][2] - vlcdt[1] - vicdt[1]) * (zs[2] - zs[1]) / 2.0;
+            infmax[i] = (_rainslSave.Psat[1] * _slparm.Soilwrc[1][2] - vlcdt[1] - vicdt[1]) * (zs[2] - zs[1]) / 2.0;
             //
             //     IF CURRENT LAYER IS ALREADY SATURATED -- GO TO NEXT LAYER
-            if (infmax <= 0.0) goto label30;
+            if (infmax[i] <= 0.0)
+            {
+                infmax[i] = 0.0;
+                dtime[i + 1] = dtime[i];
+                goto label30;
+            }
             //
             //     CALCULATE THE POTENTIAL INFILTRATION FOR THE LAYER
             label20:;
             if (zstar <= 1.0)
             {
                 //        ASSUMPTION OF SATURATED FLOW BEHIND WETTING FRONT IS VALID
-                dtstar = satkmx[i] * dtime / (_rainslSave.Psat[i] * _slparm.Soilwrc[i][2] - vlcdt[i] - vicdt[i]) / (-matdt[i] + sumz);
-                potinf = (dtstar - 2 * zstar + Math.Sqrt(Math.Pow((dtstar - 2 * zstar), 2) + 8 * dtstar)) / 2;
-                potinf = potinf * (_rainslSave.Psat[i] * _slparm.Soilwrc[i][2] - vlcdt[i] - vicdt[i]) * (-matdt[i] + sumz);
+                dtstar = satkmx[i] * dtime[i] / (_rainslSave.Psat[i] * _slparm.Soilwrc[i][2] - vlcdt[i] - vicdt[i]) / (-matdt[i] + sumz);
+                potinf[i] = (dtstar - 2.0 * zstar + Math.Sqrt(Math.Pow((dtstar - 2.0 * zstar), 2.0) + 8.0 * dtstar)) / 2.0;
+                potinf[i] = potinf[i] * (_rainslSave.Psat[i] * _slparm.Soilwrc[i][2] - vlcdt[i] - vicdt[i]) * (-matdt[i] + sumz);
             }
             else
             {
                 //        INFILTRATION FLOW HAS BECOME UNSATURATED -- USE FLOW THROUGH
                 //        SATURATED MEDIUM
-                potinf = satinf * dtime;
+                if (i < nsat) nsat = i - 1;
+                potinf[i] = satinf * dtime[i];
             }
             //
-            if (infmax >= (rain - infil))
+            if (infmax[i] >= (rain - infil))
             {
                 //        LAYER CAN HOLD REMAINDER OF WATER - CHECK IF ALL CAN INFILTRATE
                 //
-                if (potinf >= (rain - infil))
+                if (potinf[i] >= (rain - infil))
                 {
                     //           LAYER CAN INFILTRATE REMAINDER OF RAIN
+                    dinfil = infil - rain;
                     infil = rain;
                 }
                 else
                 {
                     //           PROFILE CANNOT INFILTRATE ALL OF THE RAIN
-                    infil = infil + potinf;
+                    dinfil = potinf[i];
+                    infil = infil + potinf[i];
                 }
                 //
                 //        INFILTRATION CALCULATION IS COMPLETE - GO TO ENERGY CALCULATION
@@ -9932,10 +10051,11 @@ namespace Landis.Extension.ShawDamm
             //
             //     LAYER CANNOT HOLD REMAINDER OF RAIN - CHECK IF IT CAN HOLD POTINF
             //
-            if (potinf < infmax)
+            if (potinf[i] < infmax[i])
             {
                 //        PROFILE CANNOT INFILTRATE REMAINDER OF THE RAIN
-                infil = infil + potinf;
+                dinfil = potinf[i];
+                infil = infil + potinf[i];
                 //        INFILTRATION CALCULATION COMPLETE - GO TO ENERGY CALCULATION
                 goto label40;
             }
@@ -9945,17 +10065,17 @@ namespace Landis.Extension.ShawDamm
             if (zstar <= 1.0)
             {
                 //        ASSUMPTION OF SATURATED FLOW BEHIND WETTING FRONT IS VALID
-                diminf = infmax / (_rainslSave.Psat[i] * _slparm.Soilwrc[i][2] - vlcdt[i] - vicdt[i]) / (-matdt[i] + sumz);
+                diminf = infmax[i] / (_rainslSave.Psat[i] * _slparm.Soilwrc[i][2] - vlcdt[i] - vicdt[i]) / (-matdt[i] + sumz);
                 if (diminf > 0.01)
                 {
-                    dtstar = (zstar - 1) * Math.Log(1.0 + diminf) + diminf;
+                    dtstar = (zstar - 1.0) * Math.Log(1.0 + diminf) + diminf;
                 }
                 else
                 {
                     //           IF DIMINF IS SMALL, USE ALTERNATE METHOD OF CALCULATING LOG
                     //           TERM BECAUSE SERIOUS ERRORS MAY RESULT WHEN TAKING THE LOG
                     //           OF A NUMBER VERY CLOSE TO 1.0, I.E. (1.0 + 10^-5)
-                    dtstar = (zstar - 1) * 2 * diminf / (2 + diminf) + diminf;
+                    dtstar = (zstar - 1.0) * 2.0 * diminf / (2.0 + diminf) + diminf;
                 }
                 time = dtstar * (_rainslSave.Psat[i] * _slparm.Soilwrc[i][2] - vlcdt[i] - vicdt[i]) * (-matdt[i] + sumz) / satkmx[i];
             }
@@ -9963,12 +10083,18 @@ namespace Landis.Extension.ShawDamm
             {
                 //        INFILTRATION FLOW HAS BECOME UNSATURATED -- USE FLOW THROUGH
                 //        SATURATED MEDIUM
-                time = infmax / satinf;
+                if (i < nsat) nsat = i - 1;
+                time = infmax[i] / satinf;
             }
             //
-            dtime = dtime - time;
-            infil = infil + infmax;
-            if (dtime <= 0.0) goto label40;
+            dtime[i + 1] = dtime[i] - time;
+            dinfil = infmax[i];
+            infil = infil + infmax[i];
+            if (dtime[i + 1] <= 0.0)
+            {
+                dtime[i + 1] = 0.0;
+                goto label40;
+            }
             //
             //     UPDATE PARAMETERS FOR NEXT LAYER
             label30:;
@@ -10003,7 +10129,15 @@ namespace Landis.Extension.ShawDamm
                         //              DETERMINE WATER CONTENT OF LAYER SUCH THAT CONDUCTIVITY
                         //              MATCHES FLOW INTO LAYER - USE LOGARITHMIC INTERPOLATION
                         //              BETWEEN KNOWN POINTS OF VLC AND CONDUCTIVITY
-                        _rainslSave.Psat[i] = Math.Pow(10.0, (Math.Log10(psatk) * Math.Log10(satinf / satkmx[i]) / Math.Log10(satk9[i] / satkmx[i])));
+                        if (satk9[i] > 0.0)
+                            _rainslSave.Psat[i] = Math.Pow(10.0, (Math.Log10(psatk) * Math.Log10(satinf / satkmx[i]) / Math.Log10(satk9[i] / satkmx[i])));
+                        else
+                        {
+                            // Cannot do logarithmic interpolation - use linear
+                            _rainslSave.Psat[i] = vlc9[i] / _slparm.Soilwrc[i][2];
+                            _rainslSave.Psat[i] = _rainslSave.Psat[i] + (psatk - _rainslSave.Psat[i]) * satinf / satkmx[i];
+                        }
+
                         if (_rainslSave.Psat[i] > psatk) _rainslSave.Psat[i] = psatk;
                         //              DEFINE MAXIMUM SATURATED CONDUCTIVITY FOR CURRENT LAYER
                         satkmx[i] = sumz / sumzk;
@@ -10018,15 +10152,30 @@ namespace Landis.Extension.ShawDamm
                     //           DETERMINE WATER CONTENT OF LAYER SUCH THAT CONDUCTIVITY
                     //           MATCHES FLOW INTO LAYER - USE LOGARITHMIC INTERPOLATION
                     //           BETWEEN KNOWN POINTS OF VLC AND CONDUCTIVITY
-                    _rainslSave.Psat[i] = Math.Pow(10.0, (Math.Log10(psatk) * Math.Log10(satinf / satkmx[i]) / Math.Log10(satk9[i] / satkmx[i])));
+                    if (satk9[i] > 0.0)
+                        _rainslSave.Psat[i] = Math.Pow(10.0, (Math.Log10(psatk) * Math.Log10(satinf / satkmx[i]) / Math.Log10(satk9[i] / satkmx[i])));
+                    else
+                    {
+                        // Cannot do logarithmic interpolation - use linear
+                        _rainslSave.Psat[i] = vlc9[i] / _slparm.Soilwrc[i][2];
+                        _rainslSave.Psat[i] = _rainslSave.Psat[i] + (psatk - _rainslSave.Psat[i]) * satinf / satkmx[i];
+                    }
+
                     if (_rainslSave.Psat[i] > psatk) _rainslSave.Psat[i] = psatk;
                     //           DEFINE MAXIMUM SATURATED CONDUCTIVITY FOR CURRENT LAYER
                     satkmx[i] = sumz / sumzk;
+                    if (i < nsat) nsat = i - 1;
                 }
                 //        CALCULATE THE MAXIMUM INFILTRATION THAT LAYER CAN HOLD
-                infmax = (_rainslSave.Psat[i] * _slparm.Soilwrc[i][2] - vlcdt[i] - vicdt[i]) * (zs[i + 1] - zs[i - 1]) / 2.0;
+                infmax[i] = (_rainslSave.Psat[i] * _slparm.Soilwrc[i][2] - vlcdt[i] - vicdt[i]) * (zs[i + 1] - zs[i - 1]) / 2.0;
                 //        IF LAYER CANNOT HOLD ADDITIONAL WATER, GO TO NEXT LAYER
-                if (infmax <= 0.0) goto label30;
+                if (infmax[i] <= 0.0)
+                {
+                    infmax[i] = 0.0;
+                    potinf[i] = dtime[i] * sumz / sumzk;
+                    dtime[i + 1] = dtime[i];
+                    goto label30;
+                }
                 goto label20;
             }
             else
@@ -10035,22 +10184,87 @@ namespace Landis.Extension.ShawDamm
                 if (zstar <= 1.0)
                 {
                     //           COMPUTE FLOW THROUGH SATURATED PROFILE
-                    infil = infil + dtime * sumz / sumzk;
+                    dinfil = dtime[i] * sumz / sumzk;
+                    infil = infil + dtime[i] * sumz / sumzk;
                 }
                 else
                 {
                     //           COMPARE FLUX TO SATURATED CONDUCIVITY OF CURRENT LAYER
                     if (satkmx[i] < satinf) satinf = satkmx[i];
-                    infil = infil + dtime * satinf;
+                    dinfil = dtime[i] * satinf;
+                    infil = infil + dtime[i] * satinf;
+                    if (i < nsat) nsat = i - 1;
                 }
-                if (infil > rain) infil = rain;
+                if (infil > rain)
+                {
+                    dinfil = rain - infil;
+                    infil = rain;
+                }
             }
-        //
-        //-----------------------------------------------------------------------
-        //     INFILTRATION CALCULATION COMPLETE -- CALCULATE WATER TO BE PONDED,
-        //     THEN DETERMINE TEMPERATURE, MOISTURE CONTENTS AND SOLUTES.
-        //
-        label40:;
+            //
+            //     ALLOW FOR LATERAL FLOW EXITING THE PROFILE
+            label40:;
+            if (infil < rain)
+            {
+                //     RAIN IS AVAILABLE FOR LATERAL FLOW IN EXCESS OF INFILTRATION
+                if (i < nsat) nsat = i;
+                //     START AT BOTTOM OF SATURATED WETTING FRONT AND WORK TO SURFACE
+                imax = i;
+                flownext = dinfil;
+                for (i = imax; i >= 1; --i)
+                {
+                    if (i < nsat)
+                    {
+                        if (_slparm.Satklat[i] > 0.0 && vicdt[i] <= 0.0)
+                        {
+                            //            COMPUTE POTENTIAL FOR "EXTRA" LATERAL OUTFLOW BEYOND THAT 
+                            //            ALREADY ACCOUNTED FOR IN WATER BALANCE SOLUTION
+                            if (i == 1)
+                            {
+                                dz = (zs[2] - zs[1]) / 2.0;
+                            }
+                            else
+                            {
+                                dz = (zs[i + 1] - zs[i - 1]) / 2.0;
+                            }
+                            xtrlat[i] = dtime[i] * _slparm.Satklat[i] * Math.Sin(slope) * dz - totlat[i];
+                            if (xtrlat[i] < 0.0) xtrlat[i] = 0.0;
+                            xtrmax = potinf[i] - infmax[i] - flownext;
+                            if (xtrmax < 0.0) xtrmax = 0.0;
+                            if (xtrlat[i] > xtrmax) xtrlat[i] = xtrmax;
+                            //            ADJUST FOR THE INCREASED LATERAL FLOW
+                            if (xtrlat[i] > 0.0)
+                            {
+                                if (xtrlat[i] >= (rain - infil))
+                                {
+                                    //                  LATERAL FLOW CAN INFILTRATE REMAINDER OF RAIN
+                                    xtrlat[i] = rain - infil;
+                                    infil = rain;
+                                    goto label46;
+                                }
+                                else
+                                {
+                                    //                  INCREASE INFILTRATION BY LATERAL FLOW FROM LAYER
+                                    infil = infil + xtrlat[i];
+                                }
+                                totlat[i] = totlat[i] + xtrlat[i];
+                            }
+                        }
+                    }
+                    //          COMPUTE FLOW INTO LAYER FOR USE FOR LAYER ABOVE
+                    flownext = flownext + infmax[i] + xtrlat[i];
+                    if (i > 1)
+                    {
+                        if (potinf[i - 1] < potinf[i]) potinf[i - 1] = potinf[i];
+                    }
+                    label45:;
+                }
+            }
+            //-----------------------------------------------------------------------
+            //     INFILTRATION CALCULATION COMPLETE -- CALCULATE WATER TO BE PONDED,
+            //     THEN DETERMINE TEMPERATURE, MOISTURE CONTENTS AND SOLUTES.
+            //
+            label46:;
             pond = rain - infil;
             rain = 0.0;
             if (pond > pondmx)
@@ -10063,7 +10277,8 @@ namespace Landis.Extension.ShawDamm
             if (infil <= 0.0)
             {
                 //        UPDATE OF WATER CONTENTS, TEMPERATURES, AND SOLUTES COMPLETE
-                infmax = 0.0;
+                i = 1;
+                infmax[i] = 0.0;
                 goto label110;
             }
             //
@@ -10080,9 +10295,9 @@ namespace Landis.Extension.ShawDamm
         //
         //     CALCULATE THE WATER INFILTRATED INTO THE CURRENT NODE
         label50:;
-            infmax = (_rainslSave.Psat[i] * _slparm.Soilwrc[i][2] - vlcdt[i] - vicdt[i]) * dz;
-            if (infmax < 0.0) infmax = 0.0;
-            if (infmax >= infil) infmax = infil;
+            infmax[i] = (_rainslSave.Psat[i] * _slparm.Soilwrc[i][2] - vlcdt[i] - vicdt[i]) * dz;
+            if (infmax[i] < 0.0) infmax[i] = 0.0;
+            if (infmax[i] >= infil) infmax[i] = infil;
             //
             //     ADJUST THE SOLUTE CONCENTRATION IN NODE TO ACCOUNT FOR LEACHING
             for (var j = 1; j <= _slparm.Nsalt; ++j)
@@ -10098,10 +10313,10 @@ namespace Landis.Extension.ShawDamm
                 {
                     cleach = sloss / Constn.Rhol / infil;
                 }
-                saltdt[j][i] = saltdt[j][i] + cleach * Constn.Rhol * infmax / _slparm.Rhob[i];
+                saltdt[j][i] = saltdt[j][i] + cleach * Constn.Rhol * infmax[i] / _slparm.Rhob[i];
                 //        CALCULATE SALT PRESENT IN NODE AFTER LEACHING
-                skqvlc = _slparm.Saltkq[j][i] + (vlcdt[i] + infmax / dz) * Constn.Rhol / _slparm.Rhob[i];
-                sltnew = (cleach * Constn.Rhol * (infil - infmax) / dz + saltdt[j][i] * (_slparm.Rhob[i] - _timewt.Wt * Constn.Rhol * (infil - infmax) / dz / skqvlc)) / (_slparm.Rhob[i] + _timewt.Wdt * Constn.Rhol * (infil - infmax) / dz / skqvlc);
+                skqvlc = _slparm.Saltkq[j][i] + (vlcdt[i] + infmax[i] / dz) * Constn.Rhol / _slparm.Rhob[i];
+                sltnew = (cleach * Constn.Rhol * (infil - infmax[i]) / dz + saltdt[j][i] * (_slparm.Rhob[i] - _timewt.Wt * Constn.Rhol * (infil - infmax[i]) / dz / skqvlc)) / (_slparm.Rhob[i] + _timewt.Wdt * Constn.Rhol * (infil - infmax[i]) / dz / skqvlc);
                 if (sltnew < 0.0) sltnew = 0.0;
                 sloss = (saltdt[j][i] - sltnew) * _slparm.Rhob[i] * dz;
                 saltdt[j][i] = sltnew;
@@ -10119,7 +10334,7 @@ namespace Landis.Extension.ShawDamm
                 //        LAYER IS NOT FROZEN -- CALCULATE THE TEMPERATURE DIRECTLY AND
                 //        ADJUST MOISTURE CONTENT, MATRIC POTENTIAL, AND SOLUTES
                 tsdt[i] = tsdt[i] + rainht / (rainht + sheat) * (train - tsdt[i]);
-                vlcdt[i] = vlcdt[i] + infmax / dz;
+                vlcdt[i] = vlcdt[i] + infmax[i] / dz;
                 //        DO NOT ALLOW ADJUSTMENT OF SATURATED POTENTIALS
                 if (matdt[i] < _slparm.Soilwrc[i][1]) Matvl1(i, ref matdt[i], ref vlcdt[i], ref dummy);
                 for (var j = 1; j <= _slparm.Nsalt; ++j)
@@ -10134,7 +10349,7 @@ namespace Landis.Extension.ShawDamm
                 //        LAYER CONTAINS ICE -- MUST ACCOUNT FOR LATENT HEAT OF FUSION.
                 //        CALCULATE TEMPERATURE AT WHICH LAYER WILL BE COMPLETELY THAWED
                 oldvlc = vlcdt[i];
-                vlcdt[i] = vlcdt[i] + vicdt[i] * Constn.Rhoi / Constn.Rhol + infmax / dz;
+                vlcdt[i] = vlcdt[i] + vicdt[i] * Constn.Rhoi / Constn.Rhol + infmax[i] / dz;
                 Matvl1(i, ref matdt[i], ref vlcdt[i], ref dummy);
                 tlconc = 0.0;
                 for (var j = 1; j <= _slparm.Nsalt; ++j)
@@ -10165,7 +10380,7 @@ namespace Landis.Extension.ShawDamm
                 //                        RAINHT*(TRAIN-T(NEW)) + SOILHT(T(NEW) - TSDT)
                 tsoil = tsdt[i];
                 oldvic = vicdt[i];
-                vicmax = vicdt[i] + infmax / dz * (Constn.Rhol / Constn.Rhoi);
+                vicmax = vicdt[i] + infmax[i] / dz * (Constn.Rhol / Constn.Rhoi);
                 vicdt[i] = oldvic - (rainht * (train - tmpfrz) - sheat * (tmpfrz - tsoil)) / (Constn.Rhoi * Constn.Lf * dz);
                 if (vicdt[i] > vicmax) vicdt[i] = vicmax;
                 vlcdt[i] = oldvlc + (vicmax - vicdt[i]) * Constn.Rhoi / Constn.Rhol;
@@ -10203,7 +10418,9 @@ namespace Landis.Extension.ShawDamm
         //     CALCULATE CONDITIONS OF NEXT LAYER
         label110:;
             i = i + 1;
-            infil = infil - infmax;
+            //     COMPUTE INFILTRATION COMING IN FROM ABOVE ACCOUNTING FOR WATER
+            //     ABSORBED  AND LOST TO LATERAL FLOW BY PREVIOUS LAYER
+            infil = infil - infmax[i - 1] - xtrlat[i - 1];
             //     ADD INFILTRATION BETWEEN NODES TO TOTAL FLOW BETWEEN NODES
             totflo[i - 1] = totflo[i - 1] + infil;
             if (i < ns)
@@ -10219,7 +10436,7 @@ namespace Landis.Extension.ShawDamm
             int[] itype, int inital, double[] zc, double[] wcan, double[] wcandt, double[] pcan, double[] pcandt, double[] vapc, double[] vapcdt,
             double[] rhosp, double[] dzsp, double[] dlwdt, double[] wlag, ref double store, double[] zr, double[] gmc, double[] gmcdt, double[] vapr,
             double[] vaprdt, double[] rhor, double[] zs, double[] vlc, double[] vlcdt, double[] vic, double[] vicdt, double[] totflo, ref double precip,
-            ref double runoff, ref double pond, ref double evap1, ref double melt, ref double etsum, ShawDammResults results)
+            ref double runoff, ref double pond, ref double evap1, ref double melt, ref double etsum, double[] totlat, ShawDammResults results)
         {
             //
             //     THIS SUBROUTINE SUMS THE EVAPORATION AND DEEP PERCOLATION AT THE
@@ -10796,7 +11013,7 @@ namespace Landis.Extension.ShawDamm
 
             for (var i = 1; i <= n - 1; ++i)
             {
-                con[i] = Math.Sqrt(rk[i] * rk[i + 1]) / (z[i + 1] - z[i]);
+                con[i] = Math.Sqrt(Math.Abs(rk[i] * rk[i + 1])) / (z[i + 1] - z[i]);
             label10:;
             }
 

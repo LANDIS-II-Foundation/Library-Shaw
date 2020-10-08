@@ -14,7 +14,8 @@ namespace Landis.Extension.ShawDamm
         {
             _ns = ns;
             DailySoilTemperatureProfiles = new List<double[]>();
-            DailySoilMoistureProfiles = new List<double[]>();
+            DailySoilLiquidWaterProfiles = new List<double[]>();
+            DailySoilTotalWaterProfiles = new List<double[]>();
 
             DailySnowHeatCapacity = new List<double>();
             DailySnowThermalConductivity = new List<double>();
@@ -33,7 +34,8 @@ namespace Landis.Extension.ShawDamm
         public bool Success { get; set; }
 
         public List<double[]> DailySoilTemperatureProfiles { get; }     // may not be needed
-        public List<double[]> DailySoilMoistureProfiles { get; }
+        public List<double[]> DailySoilLiquidWaterProfiles { get; }
+        public List<double[]> DailySoilTotalWaterProfiles { get; }
 
         public List<double> DailySnowHeatCapacity { get; }              // may not be needed
         public List<double> DailySnowThermalConductivity { get; }       // may not be needed
@@ -50,35 +52,45 @@ namespace Landis.Extension.ShawDamm
 
         public double[] ShawDepths { get; set; }
 
-        public double[] MonthSoilMoistureProfile { get; private set; }    // average across the month
+        public List<double> MonthSoilLiquidWaterProfile { get; private set; }    // average across the month
+        public List<double> MonthSoilTotalWaterProfile { get; private set; }    // average across the month
 
-        public void AddOneBasedProfiles(double[] tsdt, double[] vlcdt)
+        public void AddOneBasedProfiles(double[] tsdt, double[] vlcdt, double[] vicdt, double rhoi, double rhol)
         {
             var t = new double[_ns];
             Array.Copy(tsdt, 1, t, 0, _ns);
             DailySoilTemperatureProfiles.Add(t);
 
-            var v = new double[_ns];
-            Array.Copy(vlcdt, 1, v, 0, _ns);
-            DailySoilMoistureProfiles.Add(v);
+            var vl = new double[_ns];
+            Array.Copy(vlcdt, 1, vl, 0, _ns);
+            var vi = new double[_ns];
+            Array.Copy(vicdt, 1, vi, 0, _ns);
+
+            var vtotal = new double[_ns];
+            for (var i = 0; i < _ns; ++i)
+                vtotal[i] = vlcdt[i] + vicdt[i] * rhoi / rhol;
+
+            DailySoilLiquidWaterProfiles.Add(vl);
+            DailySoilTotalWaterProfiles.Add(vtotal);
         }
 
         public void MakeMonthSummaries()
         {
-            MonthSoilMoistureProfile = AverageProfileOverDays(DailySoilMoistureProfiles);
+            MonthSoilLiquidWaterProfile = AverageProfileOverDays(DailySoilLiquidWaterProfiles);
+            MonthSoilTotalWaterProfile = AverageProfileOverDays(DailySoilTotalWaterProfiles);
             MonthEvapotranspirationInCm = DailyEvapotranspiration.Sum() / 10.0;      // convert to cm
             MonthDeepPercolationInCm = DailyDeepPercolation.Sum() / 10.0;           // convert to cm
             MonthRunoffInCm = DailyRunoff.Sum() / 10.0;                             // convert to cm
         }
 
-        private double[] AverageProfileOverDays(List<double[]> dailyProfiles)
+        private List<double> AverageProfileOverDays(List<double[]> dailyProfiles)
         {
             var days = dailyProfiles.Count;
             var depths = dailyProfiles.First().Length;
-            var averageProfile = new double[depths];
+            var averageProfile = new List<double>(depths);
 
             for (var j = 0; j < depths; ++j)
-                averageProfile[j] = Enumerable.Range(0, days).Average(i => dailyProfiles[i][j]);
+                averageProfile.Add(Enumerable.Range(0, days).Average(i => dailyProfiles[i][j]));
 
             return averageProfile;
         }

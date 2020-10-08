@@ -118,6 +118,18 @@ namespace Landis.Extension.ShawDamm
             return false;
         }
 
+        public static bool TryParseInputOptional<T>(string name, string input, out T value, out string errorMessage, T missingValue, double lowerRange = double.NegativeInfinity, double upperRange = double.PositiveInfinity, bool lowerInclusive = true, bool upperInclusive = true)
+        {
+            errorMessage = string.Empty;
+            if (string.IsNullOrEmpty(input))
+            {
+                value = missingValue;
+                return true;
+            }
+
+            return TryParseInput(name, input, out value, out errorMessage, lowerRange, upperRange, lowerInclusive, upperInclusive);
+        }
+
         public static bool TryParseInput<T>(string name, string input, out T value, out string errorMessage, double lowerRange = double.NegativeInfinity, double upperRange = double.PositiveInfinity, bool lowerInclusive = true, bool upperInclusive = true)
         {
             value = default(T);
@@ -137,8 +149,7 @@ namespace Landis.Extension.ShawDamm
 
             if (typeof(T) == typeof(double))
             {
-                double t;
-                if (!double.TryParse(input, out t))
+                if (!double.TryParse(input, out double t))
                 {
                     errorMessage = $"{name} : cannot parse '{input}' as double";
                     return false;
@@ -153,8 +164,7 @@ namespace Landis.Extension.ShawDamm
 
             if (typeof(T) == typeof(int))
             {
-                int t;
-                if (!int.TryParse(input, out t))
+                if (!int.TryParse(input, out int t))
                 {
                     errorMessage = $"{name} : cannot parse '{input}' as int";
                     return false;
@@ -169,8 +179,7 @@ namespace Landis.Extension.ShawDamm
 
             if (typeof(T) == typeof(bool))
             {
-                bool t;
-                if (!bool.TryParse(input, out t))
+                if (!bool.TryParse(input, out bool t))
                 {
                     errorMessage = $"{name} : cannot parse '{input}' as bool";
                     return false;
@@ -178,6 +187,21 @@ namespace Landis.Extension.ShawDamm
 
                 value = (T)Convert.ChangeType(t, typeof(T));
                 return true;
+            }
+
+            if (typeof(T).IsEnum)
+            {
+                try
+                {
+                    var t = Enum.Parse(typeof(T), input, true);
+                    value = (T)Convert.ChangeType(t, typeof(T));
+                    return true;
+                }
+                catch (Exception ex)
+                {
+                    errorMessage = $"{name} : cannot parse '{input}' as one of '{string.Join(",", Enum.GetNames(typeof(T)))}'";
+                    return false;
+                }
             }
 
             errorMessage = $"{name} : unrecognized Type '{typeof(T)}' requested";
