@@ -775,6 +775,7 @@ namespace Landis.Extension.ShawDamm
             var vap = 0.0;
             var vapdt = 0.0;
 
+            var totalIters = 0;
             var convergenceIssue = false;
 
             // line 285
@@ -1094,6 +1095,7 @@ namespace Landis.Extension.ShawDamm
             itrslt = 0;
         label200:;
             iter = iter + 1;
+            ++totalIters;
             if (_timewt.Wdt <= 1.0)
             {
                 //        IF SATURATED OR EXTREMELY DRY CONDITIONS EXIST,
@@ -1814,6 +1816,37 @@ namespace Landis.Extension.ShawDamm
         label350:;
             if (iwflag > 0 || ieflag > 0)
             {
+                if (totalIters > 70)
+                {
+                    //convergenceIssue = true;
+                    //goto label398;
+                }
+
+                var ddelta = 50.0;
+                if (tsdt.Min() < -ddelta || tsdt.Max() > ddelta)
+                {
+                    convergenceIssue = true;
+                    goto label398;
+                }
+
+                if (tspdt.Min() < -ddelta || tspdt.Max() > ddelta)
+                {
+                    convergenceIssue = true;
+                    goto label398;
+                }
+
+                if (tsdt.Any(x => double.IsNaN(x)))
+                {
+                    convergenceIssue = true;
+                    goto label398;
+                }
+
+                if (tspdt.Any(x => double.IsNaN(x)))
+                {
+                    convergenceIssue = true;
+                    goto label398;
+                }
+
                 //        CONVERGENCE HAS NOT BEEN MET - IF ITERATIONS ARE UNDER 10, GO
                 //        BACK AND START NEXT ITERATION
                 if (iter <= 10) goto label200;
@@ -1849,13 +1882,21 @@ namespace Landis.Extension.ShawDamm
                     return false;
                 }
 
-                // JM: backup and drop out of the solve if pcandt is weird
-                if (pcandt.Max() > 0.001)
-                {
-                    Backup(ref ns, ref nr, ref nsp, ref nc, ref nplant, ref _slparm.Nsalt, ices, icesdt, ts, tsdt, mat, matdt, conc, concdt, vlc, vlcdt, vic, vicdt, salt, saltdt, tr, trdt, vapr, vaprdt, gmc, gmcdt, tc, tcdt, tlc, tlcdt, vapc, vapcdt, wcan, wcandt, pcan, pcandt, tsp, tspdt, dlw, dlwdt, icesp, icespt);
-                    convergenceIssue = true;
-                }
+                // JM: if pcandt is weird
+                //if (pcandt.Max() > 0.001)
+                //{
+                //    convergenceIssue = true;
+                //}
             }
+
+            label398:;
+            // backup and drop out for convergence issues
+            if (convergenceIssue)
+            {
+                Backup(ref ns, ref nr, ref nsp, ref nc, ref nplant, ref _slparm.Nsalt, ibices, icesdt, bts, tsdt, bmat, matdt, bconc, concdt, bvlc, vlcdt, bvic, vicdt, bsalt, saltdt, btr, trdt, bvapr, vaprdt, bgmc, gmcdt, btc, tcdt, btlc, tlcdt, bvapc, vapcdt, bwcan, wcandt, bpcan, pcandt, btsp, tspdt, bdlw, dlwdt, icesp, icespt);
+                goto label400;
+            }
+
             //
             //CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
 
@@ -1994,7 +2035,7 @@ namespace Landis.Extension.ShawDamm
                 var snowThickness = 0.0;
                 if (nsp > 0)
                 {
-                    var tk1 = new double[51];
+                    var tk1 = new double[101];
                     Snowtk(ref nsp, tk1, rhosp);
                     tk1[nsp + 1] = tk1[nsp];
 
@@ -8660,7 +8701,8 @@ namespace Landis.Extension.ShawDamm
             {
                 Wbsnow(ref nsp, icespt, zsp, dzsp, rhosp, tspdt, dlw, dlwdt, ref rain, ref train, ref topsno, ref evap1, tqvsp, wlag, ref store, ref scout);
                 rain = scout;
-                train = 0.0;
+                if (scout > 0.0)
+                    train = 0.0;
             }
             //
             //     DO NOT INFILTRATE PONDED WATER OR SNOW EXCESS (SNOWEX) IF
@@ -10129,7 +10171,7 @@ namespace Landis.Extension.ShawDamm
                         //              DETERMINE WATER CONTENT OF LAYER SUCH THAT CONDUCTIVITY
                         //              MATCHES FLOW INTO LAYER - USE LOGARITHMIC INTERPOLATION
                         //              BETWEEN KNOWN POINTS OF VLC AND CONDUCTIVITY
-                        if (satk9[i] > 0.0)
+                        if (satk9[i] > 0.0 && Math.Abs(satk9[i] - satkmx[i]) > 1e-10)
                             _rainslSave.Psat[i] = Math.Pow(10.0, (Math.Log10(psatk) * Math.Log10(satinf / satkmx[i]) / Math.Log10(satk9[i] / satkmx[i])));
                         else
                         {
@@ -10152,7 +10194,7 @@ namespace Landis.Extension.ShawDamm
                     //           DETERMINE WATER CONTENT OF LAYER SUCH THAT CONDUCTIVITY
                     //           MATCHES FLOW INTO LAYER - USE LOGARITHMIC INTERPOLATION
                     //           BETWEEN KNOWN POINTS OF VLC AND CONDUCTIVITY
-                    if (satk9[i] > 0.0)
+                    if (satk9[i] > 0.0 && Math.Abs(satk9[i] - satkmx[i]) > 1e-10)
                         _rainslSave.Psat[i] = Math.Pow(10.0, (Math.Log10(psatk) * Math.Log10(satinf / satkmx[i]) / Math.Log10(satk9[i] / satkmx[i])));
                     else
                     {

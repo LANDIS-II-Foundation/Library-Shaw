@@ -1089,7 +1089,7 @@ namespace Landis.Extension.ShawDamm
                     if (!SimpleFileParser.TryParseInput($"{vegType} : TranspirationUpperLimit", plantData["TranspirationUpperLimit"], out _stomate[jj][3], out errorMessage, SimpleFileParser.AbsZero))
                         return false;
 
-                    if (!SimpleFileParser.TryParseInput($"{vegType} : TranspirationOptimum", plantData["TranspirationOptimum"], out _stomate[jj][4], out errorMessage, SimpleFileParser.AbsZero))
+                    if (!SimpleFileParser.TryParseInput($"{vegType} : TranspirationOptimum", plantData["TranspirationOptimum"], out _stomate[jj][4], out errorMessage, _stomate[jj][2], _stomate[jj][3]))
                         return false;
 
                     if (!SimpleFileParser.TryParseInput($"{vegType} : VPDMaximumReduction", plantData["VPDMaximumReduction"], out _stomate[jj][5], out errorMessage, 0.0, 1.0, false))
