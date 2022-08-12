@@ -1723,6 +1723,21 @@ namespace Landis.Extension.ShawDamm
                         delta[n] = delta[n] / 2.0;
                     }
                     delwtr[n] = delta[n];
+
+                    // JM (07.22.2022): --START: code change from Gerald: 'Critical Lines inserted in "Shaw303-PEST-Beta.for" since 5/27/2020'
+                    // Check if change in ice content is reasonable
+                    if (Math.Abs(delta[n]) > 0.2)
+                    {
+                        // Compute flux required to accomplish ice phase change
+                        var dz = i == 1 ? (zs[2] - zs[1]) / 2.0 : (zs[i + 1] - zs[i - 1]) / 2.0;
+                        if (Math.Abs(Constn.Rhoi * Constn.Lf * delta[n] * dz / _timewt.Dt) > 2000.0)
+                        {
+                            // More than 2000 W/m!! -- not realistic
+                            delta[n] = delta[n] / Math.Abs(delta[n]) * 2000.0 * _timewt.Dt / (Constn.Rhoi * Constn.Lf * dz);
+                        }
+                    }
+                    // JM (07.22.2022): --END: code change from Gerald: 'Critical Lines inserted in "Shaw303-PEST-Beta.for" since 5/27/2020'
+
                     vicdt[i] = vicdt[i] - delta[n];
                     if (vicdt[i] < 0.0)
                     {
@@ -5658,7 +5673,20 @@ namespace Landis.Extension.ShawDamm
                                 label34:;
                                 }
                                 //                    RECALCULATE WATER POTENTIAL IN XYLEM
-                                _leaftSave.Pxylem[j] = (rsoil - sumet) / srroot;
+                                
+                                // JM (07.22.2022): --START: code change from Gerald: 'Critical Lines inserted in "Shaw303-PEST-Beta.for" since 5/27/2020'
+                                if (Math.Abs(srroot) < 1e-16)
+                                {
+                                    // AVOID DEVISION BY ZERO
+                                    // ET IS SO SMALL IT IS BEYOND NUMERICAL PRECISION
+                                    sumet = 0.0;
+                                    _leaftSave.Pxylem[j] = avgmat[max];
+                                }
+                                else
+                                {
+                                    _leaftSave.Pxylem[j] = (rsoil - sumet) / srroot;
+                                }
+                                // JM (07.22.2022): --END: code change from Gerald: 'Critical Lines inserted in "Shaw303-PEST-Beta.for" since 5/27/2020'
                             }
                             //
                             //                 CALCULATE ROOT EXTRACTION FROM EACH SOIL LAYER
@@ -5852,10 +5880,10 @@ namespace Landis.Extension.ShawDamm
                     if (swdown < 1000.0)
                     {
                         fsolar = swdown * (1000.0 + stomate[j][1]) / (1000.0 * (swdown + stomate[j][1]));
+                        //              CATCH SCENARIO FOR SWDOWN = 0.0
+                        if (fsolar < 0.0001)
+                            fsolar = 0.0001;
                     }
-                    //              CATCH SCENARIO FOR SWDOWN = 0.0
-                    if (fsolar < 0.0001)
-                        fsolar = 0.0001;
                     else
                     {
                         //              DO NOT ALLOW FACTOR TO GO ABOVE 1.0
@@ -7124,13 +7152,32 @@ namespace Landis.Extension.ShawDamm
                 tmpfrz = 273.16 * Constn.Lf / Constn.G / (Constn.Lf / Constn.G - mat[1] + tlconc * Constn.Ugas * (ts[1] + 273.17) / Constn.G);
                 t = tmpfrz;
             }
-            tdt = 273.16 + tsdt[1];
-            //     DETERMINE SLOPE OF LIQUID CONTENT-TEMPERATURE CURVE
-            Fslope(1, ref dldtdt, ref dummy, ref tdt, matdt, concdt, vlcdt);
+
+            // JM (07.22.2022): --START: code change from Gerald: 'Critical Lines inserted in "Shaw303-PEST-Beta.for" since 5/27/2020'
             Fslope(1, ref dldt, ref dummy, ref t, mat, conc, vlc);
-            //     ENTER MATVLC FOR SLOPE OF LIQUID-MATRIC POTENTIAL CURVE
-            Matvl3(1, ref matdt[1], ref vlcdt[1], ref dldm);
-            
+            if (mat[1] >= 0.0 || matdt[1] > _slparm.Soilwrc[1][1])
+            {
+                // Catch situation when there is ice with VLCDT and MATDT at
+                // saturation, which result in DLDM = 0
+                tdt = 273.159 + tsdt[1];
+                var saveMatDt = matdt[1];
+                matdt[1] = Constn.Lf * (tdt - 273.16) / tdt / Constn.G;
+                // DETERMINE SLOPE OF LIQUID CONTENT-TEMPERATURE CURVE
+                Fslope(1, ref dldtdt, ref dummy, ref tdt, matdt, concdt, vlcdt);
+                // ENTER MATVLC FOR SLOPE OF LIQUID-MATRIC POTENTIAL CURVE
+                Matvl3(1, ref matdt[1], ref vlcdt[1], ref dldm);
+                matdt[1] = saveMatDt;
+            }
+            else
+            {
+                tdt = 273.16 + tsdt[1];
+                //     DETERMINE SLOPE OF LIQUID CONTENT-TEMPERATURE CURVE
+                Fslope(1, ref dldtdt, ref dummy, ref tdt, matdt, concdt, vlcdt);
+                //     ENTER MATVLC FOR SLOPE OF LIQUID-MATRIC POTENTIAL CURVE
+                Matvl3(1, ref matdt[1], ref vlcdt[1], ref dldm);
+            }
+            // JM (07.22.2022): --END: code change from Gerald: 'Critical Lines inserted in "Shaw303-PEST-Beta.for" since 5/27/2020'
+
             // JM: B1[n] goes to NaN if dldtdt & dldm are 0.0 
             if (double.IsNaN(dldtdt / dldm))
                 dldtdt = dldm = 1.0;
@@ -7541,6 +7588,17 @@ namespace Landis.Extension.ShawDamm
                     {
                         //              COMPUTE MATRIC POTENTIAL FROM LIQUID WATER CONTENT
                         Matvl1(i, ref mat[i], ref vlc[i], ref dummy);
+                        
+                        // JM (07.22.2022): --START: code change from Gerald: 'Critical Lines inserted in "Shaw303-PEST-Beta.for" since 5/27/2020'
+                        if (mat[i] + osmpot >= 0.0)
+                        {
+                            // Temperature may be very close to zero such that 
+                            // numerical precision resulted in zero potential -
+                            // Recompute to align with temperature and avoid DLDM=0.0
+                            mat[i] = totpot - osmpot;
+                            if (mat[i] >= 0.0) mat[i] = 0.0;
+                        }
+                        // JM (07.22.2022): --END: code change from Gerald: 'Critical Lines inserted in "Shaw303-PEST-Beta.for" since 5/27/2020'
                     }
                     else
                     {
