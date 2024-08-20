@@ -876,25 +876,25 @@ namespace Landis.Extension.ShawDamm
 
             if (iversion == 2)
             {
-                Console.WriteLine("     Input format follows version 2.x");
+                //Console.WriteLine("     Input format follows version 2.x");
                 if (_lvlout[1] > 0)
                     _outputWriters[OutputFile.EntireProfile].WriteLine("     INPUT FORMAT FOLLOWS VERSION 2.x");
             }
             else
             {
-                Console.WriteLine("     Input format follows version 3.x");
+                //Console.WriteLine("     Input format follows version 3.x");
                 if (_lvlout[1] > 0)
                     _outputWriters[OutputFile.EntireProfile].WriteLine("     INPUT FORMAT FOLLOWS VERSION 3.x");
             }
             if (iflagsi == 0)
             {
-                Console.WriteLine("     with weather file in mixed English/SI units");
+                //Console.WriteLine("     with weather file in mixed English/SI units");
                 if (_lvlout[1] > 0)
                     _outputWriters[OutputFile.EntireProfile].WriteLine("     WITH WEATHER FILE IN MIXED ENGLISH/SI UNITS");
             }
             else
             {
-                Console.WriteLine("     with weather file in metric units only");
+                //Console.WriteLine("     with weather file in metric units only");
                 if (_lvlout[1] > 0)
                     _outputWriters[OutputFile.EntireProfile].WriteLine("     WITH WEATHER FILE IN METRIC UNITS ONLY");
             }
