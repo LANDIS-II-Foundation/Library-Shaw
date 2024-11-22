@@ -3526,7 +3526,7 @@ namespace Landis.Extension.ShawDamm
                 {
                     if (hour % lvlout[3] == 0 || outputInital == 0)
                     {
-                        _outputWriters[OutputFile.SoilTemperature].WriteLine($" {julian,3:D}{hour,3:D}{year,5:D}{string.Concat(Enumerable.Range(1, ns).Select(i => $"{_outputSave.Avgtmp[i] / _outputSave.Navtmp,6:F1}"))}");
+                        _outputWriters[OutputFile.SoilTemperature].WriteLine($" {julian,3:D}{hour,3:D}{year,5:D}{string.Concat(Enumerable.Range(1, ns).Select(i => $"{_outputSave.Avgtmp[i] / _outputSave.Navtmp,6:F2}"))}");
 
                         for (var i = 1; i <= ns; ++i)
                         {
