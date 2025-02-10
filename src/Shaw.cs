@@ -1605,6 +1605,11 @@ namespace Landis.Extension.ShawDamm
             //
             //**** SOLVE FOR THE WATER BALANCE OF SOIL LAYERS
             Wbsoil(ref n, ref ns, zs, ts, tsdt, mat, matdt, vlc, vlcdt, vic, vicdt, conc, concdt, icesdt, qsl, qsv, xtract, ref seep, flolat, us, ref slope, ref iter);
+
+            // JM: lack of convergence can cause 'seep' to be unphysical
+            if (seep * _timewt.Dt > 1.0)
+                seep = 0.0;
+
             //
             //-----------------------------------------------------------------------
             if (level[1] >= 2 && _lvlout[1] > 0)
